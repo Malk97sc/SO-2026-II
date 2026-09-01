@@ -1,0 +1,254 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish,es-noquoting]{babel}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{geometry}
+\geometry{top=2cm, bottom=2cm, left=2.5cm, right=2.5cm}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{etoolbox}
+\usepackage{needspace}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, calc, trees}
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstset{
+    language=bash,
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{blue},
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    numbers=left,
+    tabsize=4,
+    extendedchars=true,
+    showstringspaces=false,
+    literate={á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1 {ñ}{{\~n}}1
+}
+
+\usepackage{graphicx}
+\graphicspath{{../../assets/}}
+\BeforeBeginEnvironment{lstlisting}{\Needspace{4cm}}
+
+\setlength{\headheight}{15pt}
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{Monitorias Sistemas Operativos 2026-II}
+\rhead{Capítulo 0: Línea de Comandos}
+\cfoot{\thepage}
+
+\title{
+\begin{tikzpicture}[remember picture, overlay]
+    \node[anchor=west, inner sep=0pt, xshift=2.5cm, yshift=-2.0cm] at (current page.north west) {
+        \includegraphics[height=1.6cm]{logo_unimagdalena.png}
+    };
+    \node[anchor=east, inner sep=0pt, xshift=-2.5cm, yshift=-2.0cm] at (current page.north east) {
+        \large\textbf{2026-II}
+    };
+\end{tikzpicture}%
+\textbf{Línea de Comandos Básica en Linux}}
+\author{Malak Sanchez \\ \small Monitorias Sistemas Operativos}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Motivación}
+La línea de comandos (\textit{Command Line Interface} o CLI) es la herramienta fundamental para interactuar con sistemas operativos basados en Unix y Linux. A diferencia de las interfaces gráficas (GUI), la línea de comandos permite ejecutar tareas de forma más rápida, precisa y automatizable. Para el desarrollo en C y la programación de sistemas operativos, el dominio de la interfaz de línea de comandos resulta imprescindible para compilar, depurar y gestionar procesos y archivos.
+
+\section{Idea Fundamental}
+Cuando un usuario interactúa con la terminal, no habla directamente con el hardware del computador. Existe una arquitectura en capas: el usuario interactúa con la \textbf{Terminal} (emulador de pantalla), la cual transmite texto al \textbf{Shell} (intérprete de comandos como Bash). El Shell interpreta el comando introducido, efectúa la llamada al sistema correspondiente y le pide al \textbf{Núcleo (Kernel)} que ejecute la acción sobre el hardware.
+
+\begin{center}
+\begin{tikzpicture}[font=\small, >=Stealth, node distance=1.2cm]
+    \node[draw, rectangle, fill=blue!10, minimum width=2.5cm, minimum height=0.8cm] (user) {Usuario};
+    \node[draw, rectangle, fill=green!10, right=1cm of user, minimum width=2.5cm, minimum height=0.8cm] (term) {Terminal};
+    \node[draw, rectangle, fill=orange!20, right=1cm of term, minimum width=2.5cm, minimum height=0.8cm] (shell) {Shell (Bash)};
+    \node[draw, rectangle, fill=red!20, right=1cm of shell, minimum width=2.5cm, minimum height=0.8cm] (kernel) {Kernel (Linux)};
+
+    \draw[->, thick] (user) -- (term) node[midway, above, font=\tiny] {Teclas};
+    \draw[->, thick] (term) -- (shell) node[midway, above, font=\tiny] {Texto};
+    \draw[->, thick] (shell) -- (kernel) node[midway, above, font=\tiny] {Syscalls};
+\end{tikzpicture}
+\end{center}
+
+\section{Estructura del Sistema de Archivos y Rutas}
+En Linux todo se representa mediante un árbol jerárquico unificado que comienza en la raíz \texttt{/}. No existen letras de unidad como en otros sistemas (ej. \texttt{C:}).
+
+\begin{center}
+\begin{tikzpicture}[font=\small, >=Stealth, level distance=1.2cm,
+  level 1/.style={sibling distance=3cm},
+  level 2/.style={sibling distance=1.5cm}]
+  \node [draw, circle, fill=gray!20] {\texttt{/}}
+    child {node [draw, rectangle, fill=blue!10] {\texttt{bin}}}
+    child {node [draw, rectangle, fill=blue!10] {\texttt{home}}
+      child {node [draw, rectangle, fill=green!10] {\texttt{user}}}
+    }
+    child {node [draw, rectangle, fill=blue!10] {\texttt{tmp}}};
+\end{tikzpicture}
+\end{center}
+
+\begin{itemize}
+    \item \textbf{Ruta Absoluta:} Ubicación completa desde la raíz \texttt{/}, e.g. \texttt{/home/user/app}.
+    \item \textbf{Ruta Relativa:} Especifica la ubicación respecto al directorio actual. Usos clave:
+    \begin{itemize}
+        \item \texttt{.} se refiere al directorio actual.
+        \item \texttt{..} se refiere al directorio padre.
+        \item \texttt{\~{}} se refiere al directorio personal del usuario (\textit{home}).
+    \end{itemize}
+\end{itemize}
+
+\section{Sintaxis General de un Comando}
+La sintaxis general de cualquier comando en Linux sigue la estructura:
+\begin{lstlisting}[numbers=none]
+comando [opciones] [argumentos]
+\end{lstlisting}
+
+\begin{itemize}
+    \item \textbf{Comando:} Nombre de la utilidad a ejecutar (ej. \texttt{ls}).
+    \item \textbf{Opciones:} Modifican el comportamiento del comando. Suelen iniciar con \texttt{-} (forma corta) o \texttt{--} (forma larga). Ejemplos: \texttt{-l}, \texttt{--all}.
+    \item \textbf{Argumentos:} El objeto sobre el cual opera el comando (ej. rutas de archivos o carpetas).
+\end{itemize}
+
+\section{Comandos Esenciales}
+
+\subsection{Navegación e Inspección de Directorios}
+\begin{itemize}
+    \item \texttt{pwd}: Imprime la ruta del directorio de trabajo actual (\textit{Print Working Directory}).
+    \item \texttt{ls}: Lista el contenido del directorio.
+    \begin{itemize}
+        \item \texttt{ls -l}: Formato detallado (permisos, propietario, tamaño, fecha).
+        \item \texttt{ls -a}: Muestra todos los archivos, incluyendo archivos ocultos (los que inician con \texttt{.}).
+        \item \texttt{ls -la}: Combina ambas opciones.
+    \end{itemize}
+    \item \texttt{cd <dir>}: Cambia el directorio actual (\textit{Change Directory}).
+\end{itemize}
+
+\subsection{Manipulación de Archivos y Carpetas}
+\begin{itemize}
+    \item \texttt{mkdir <nombre>}: Crea un nuevo directorio.
+    \item \texttt{touch <archivo>}: Crea un archivo vacío o actualiza la fecha de modificación.
+    \item \texttt{cp <origen> <destino>}: Copia un archivo. Para copiar directorios recursivamente se usa \texttt{cp -r}.
+    \item \texttt{mv <origen> <destino>}: Mueve o renombra un archivo o directorio.
+    \item \texttt{rm <archivo>}: Elimina un archivo. Para eliminar un directorio y su contenido se utiliza \texttt{rm -r}.
+\end{itemize}
+
+\subsection{Visualización y Búsqueda de Contenido}
+\begin{itemize}
+    \item \texttt{cat <archivo>}: Muestra todo el contenido de un archivo en pantalla.
+    \item \texttt{head -n <k> <archivo>}: Muestra las primeras $k$ líneas de un archivo.
+    \item \texttt{tail -n <k> <archivo>}: Muestra las últimas $k$ líneas de un archivo.
+    \item \texttt{grep "<patron>" <archivo>}: Busca líneas que coincidan con un patrón de texto.
+\end{itemize}
+
+\section{Redirecciones y Tuberías (\textit{Pipes})}
+Todo proceso en Linux maneja tres flujos de datos estándar:
+\begin{enumerate}
+    \item \textbf{Entrada Estándar (\texttt{stdin}):} Descriptor 0 (teclado por defecto).
+    \item \textbf{Salida Estándar (\texttt{stdout}):} Descriptor 1 (pantalla por defecto).
+    \item \textbf{Error Estándar (\texttt{stderr}):} Descriptor 2 (pantalla por defecto).
+\end{enumerate}
+
+\subsection{Operadores de Redirección}
+\begin{itemize}
+    \item \texttt{comando > archivo}: Redirige la salida estándar a un archivo (sobreescribe).
+    \item \texttt{comando >> archivo}: Redirige la salida estándar a un archivo (añade al final).
+    \item \texttt{comando < archivo}: Toma la entrada estándar desde un archivo.
+\end{itemize}
+
+\subsection{Tuberías (\textit{Pipes})}
+El operador de tubería \texttt{|} conecta la salida estándar de un comando directamente a la entrada estándar de otro comando:
+\begin{lstlisting}[numbers=none]
+comando1 | comando2
+\end{lstlisting}
+
+\Needspace{10cm}
+\section{Ejemplo Mínimo Funcional}
+A continuación se ilustra un flujo completo donde se crea una carpeta de trabajo, un archivo fuente en C, se compila y se ejecuta redirigiendo su salida:
+
+\begin{lstlisting}[language=bash]
+# 1. Crear carpeta de trabajo y acceder a ella
+mkdir lab1
+cd lab1
+
+# 2. Crear un archivo fuente simple en C
+cat << 'EOF' > main.c
+#include <stdio.h>
+
+int main() {
+    printf("Hello from Linux CLI\n");
+    return 0;
+}
+EOF
+
+# 3. Compilar el programa con gcc
+gcc -Wall main.c -o program
+
+# 4. Ejecutar el programa y redirigir la salida a un archivo
+./program > output.txt
+
+# 5. Verificar el contenido generado
+cat output.txt
+\end{lstlisting}
+
+\section{Explicación Paso a Paso}
+\begin{enumerate}
+    \item \texttt{mkdir lab1}: Crea el directorio \texttt{lab1} en la ubicación actual.
+    \item \texttt{cd lab1}: Cambia el directorio de trabajo a la carpeta recién creada.
+    \item \texttt{cat << 'EOF' > main.c}: Utiliza un bloque \textit{Here Document} para escribir código C directamente en \texttt{main.c}.
+    \item \texttt{gcc -Wall main.c -o program}: Invoca el compilador GCC. La opción \texttt{-Wall} activa todos los avisos de advertencia y \texttt{-o program} define el nombre del ejecutable resultante.
+    \item \texttt{./program > output.txt}: Ejecuta el archivo ejecutable \texttt{program} ubicado en el directorio actual (\texttt{./}) y envía el resultado al archivo \texttt{output.txt}.
+    \item \texttt{cat output.txt}: Imprime en la consola el texto guardado en \texttt{output.txt}.
+\end{enumerate}
+
+\section{Patrones Comunes de Uso}
+
+\subsection{Filtrado e Inspección Combinada}
+Es muy común combinar comandos utilizando tuberías para analizar información:
+\begin{lstlisting}[language=bash]
+# Listar archivos ordenados y buscar aquellos con extension .c
+ls -la | grep "\.c"
+
+# Ver los ultimos procesos ejecutados filtrando por nombre
+ps aux | grep "gcc"
+\end{lstlisting}
+
+\subsection{Gestión de Permisos Basica}
+En Linux, los permisos se dividen en Lectura (\texttt{r}), Escritura (\texttt{w}) y Ejecución (\texttt{x}):
+\begin{lstlisting}[language=bash]
+# Otorgar permiso de ejecucion a un script
+chmod +x script.sh
+\end{lstlisting}
+
+\section{Errores Comunes}
+\begin{itemize}
+    \item \textbf{\texttt{No such file or directory}:} Se intenta acceder a un archivo o carpeta cuyo nombre está mal escrito o cuya ruta es incorrecta.
+    \item \textbf{\texttt{Permission denied}:} El usuario no posee los permisos de lectura, escritura o ejecución requeridos para la operación.
+    \item \textbf{\texttt{command not found}:} El comando tipeado no está instalado o no se encuentra registrado en la variable de entorno \texttt{\$PATH}.
+    \item \textbf{Olvidar el prefijo \texttt{./}:} Intentar ejecutar un programa en el directorio actual con \texttt{program} en lugar de \texttt{./program}.
+\end{itemize}
+
+\section{Buenas Prácticas}
+\begin{itemize}
+    \item \textbf{Usar Autocompletado:} Presione la tecla \texttt{Tab} para autocompletar nombres de comandos, archivos y rutas.
+    \item \textbf{Consultar Manuales:} Utilice \texttt{man <comando>} o \texttt{<comando> --help} para leer la documentación de cualquier herramienta.
+    \item \textbf{Navegar el Historial:} Utilice las teclas de flecha arriba/abajo o la combinación \texttt{Ctrl + R} para buscar comandos ejecutados previamente.
+    \item \textbf{Tener Cuidado con \texttt{rm -rf}:} Este comando elimina archivos y directorios de forma irreversible sin pedir confirmación.
+\end{itemize}
+
+\section{Ejercicios}
+\begin{enumerate}
+    \item Escriba los comandos necesarios para crear la estructura \texttt{laboratorio/entradas} y \texttt{laboratorio/salidas} en una sola instrucción.
+    \item Cree un archivo \texttt{registros.txt} con al menos 12 líneas. Mediante \texttt{head}, \texttt{tail} y una tubería, muestre únicamente las líneas 6 a la 10.
+    \item Escriba un programa mínimo en C que imprima un mensaje de estado, compílelo con el ejecutable \texttt{verificador} y ejecútelo redirigiendo su salida a \texttt{ejecucion.log}.
+\end{enumerate}
+
+\end{document}

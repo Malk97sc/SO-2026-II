@@ -1,0 +1,183 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish,es-noquoting]{babel}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{geometry}
+\geometry{top=2cm, bottom=2cm, left=2.5cm, right=2.5cm}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{etoolbox}
+\usepackage{needspace}
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstset{
+    language=C,
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{blue},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\small,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numbersep=5pt,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=2,
+    frame=single,
+    showstringspaces=false,
+    extendedchars=true,
+    literate={á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1 {ñ}{{\~n}}1
+}
+
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, calc, shapes.geometric}
+\usepackage{graphicx}
+\graphicspath{{../../assets/}}
+\BeforeBeginEnvironment{lstlisting}{\Needspace{4cm}}
+
+\setlength{\headheight}{15pt}
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{Monitorias Sistemas Operativos 2026-II}
+\rhead{Prueba Diagnóstica}
+\cfoot{\thepage}
+
+\title{
+\begin{tikzpicture}[remember picture, overlay]
+    \node[anchor=west, inner sep=0pt, xshift=2.5cm, yshift=-2.0cm] at (current page.north west) {
+        \includegraphics[height=1.6cm]{logo_unimagdalena.png}
+    };
+    \node[anchor=east, inner sep=0pt, xshift=-2.5cm, yshift=-2.0cm] at (current page.north east) {
+        \large\textbf{2026-II}
+    };
+\end{tikzpicture}%
+\huge Prueba Diagnóstica: Introducción a la Programación en C}
+\author{Malak Sanchez \\ \small Monitorias Sistemas Operativos}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section*{Instrucciones}
+\begin{enumerate}
+    \item Resuelva todos los ejercicios utilizando el lenguaje C.
+    \item El código debe compilar correctamente.
+    \item Organice su código de forma clara y utilice funciones cuando sea necesario.
+    \item No use IA generativa (ChatGPT, Gemini, Copilot, etc.).
+    \item Comente brevemente las partes importantes del programa si lo considera necesario.
+\end{enumerate}
+\newpage
+
+\section*{Ejercicio 1}
+
+Escriba un programa que lea dos números enteros $a$ y $b$. El programa debe recorrer todos los números enteros en el intervalo $[a, b]$ y para cada número $i$ debe imprimir:
+
+\begin{itemize}
+    \item Si $0 \le i \le 5$, imprima su representación en inglés en minúsculas (zero, one, ..., five).
+    \item Si $i > 5$ y el número es múltiplo de 3, imprima: \texttt{multiple}.
+    \item Si $i > 5$ y el número no es múltiplo de 3, imprima: \texttt{other}.
+\end{itemize}
+
+\subsection*{Formato de entrada}
+La entrada contiene dos líneas:
+\begin{enumerate}
+    \item $a$: Inicio del intervalo.
+    \item $b$: Final del intervalo.
+\end{enumerate}
+
+\subsection*{Ejemplo}
+\textbf{Entrada:}
+\begin{lstlisting}[numbers=none]
+4
+7
+\end{lstlisting}
+
+\textbf{Salida:}
+\begin{lstlisting}[numbers=none]
+four
+five
+multiple
+other
+\end{lstlisting}
+
+\newpage
+
+\section*{Ejercicio 2}
+
+Escriba un programa que realice las siguientes tareas:
+\begin{enumerate}
+    \item Lea un número entero $n$ que representa la cantidad de elementos.
+    \item Cree dinámicamente un vector de tamaño $n$ utilizando memoria dinámica (\texttt{malloc}).
+    \item Lea $n$ números enteros desde la entrada estándar y guárdelos en el vector.
+    \item Implemente una función que reciba el vector y calcule (usando punteros para devolver los valores):
+    \begin{itemize}
+        \item El producto de los elementos.
+        \item El valor mínimo.
+        \item La cantidad de valores pares.
+    \end{itemize}
+\end{enumerate}
+
+\subsection*{Requisitos}
+\begin{itemize}
+    \item El vector debe ser creado usando memoria dinámica.
+    \item Debe utilizar punteros para devolver los resultados de la función (parámetros por referencia).
+    \item Libere la memoria reservada al final del programa (\texttt{free}).
+\end{itemize}
+
+\subsection*{Ejemplo de ejecución}
+\textbf{Entrada:}
+\begin{lstlisting}[numbers=none]
+5
+10 4 8 2 6
+\end{lstlisting}
+
+\textbf{Salida:}
+\begin{lstlisting}[numbers=none]
+Product: 3840
+Min: 2
+Even: 5
+\end{lstlisting}
+\newpage
+
+\section*{Ejercicio 3}
+
+Se dispone de un archivo llamado \texttt{temperaturas.txt} que contiene un número entero por línea.
+
+\subsection*{Tarea}
+Escriba un programa en C que:
+\begin{enumerate}
+    \item Abra el archivo \texttt{temperaturas.txt} en modo lectura.
+    \item Lea todas las temperaturas almacenadas en el archivo.
+    \item Almacene los valores en un vector dinámico.
+    \item Calcule e imprima:
+    \begin{itemize}
+        \item La cantidad total de mediciones.
+        \item La temperatura mínima.
+        \item La temperatura máxima.
+    \end{itemize}
+\end{enumerate}
+
+\subsection*{Requisitos}
+\begin{itemize}
+    \item Usar \texttt{FILE*}, \texttt{fopen} y \texttt{fclose}.
+    \item Usar \texttt{fscanf} o \texttt{fgets}.
+    \item Utilizar memoria dinámica para el vector.
+\end{itemize}
+
+
+\end{document}

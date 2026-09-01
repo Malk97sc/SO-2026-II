@@ -1,0 +1,140 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish,es-noquoting]{babel}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{geometry}
+\geometry{top=2cm, bottom=2cm, left=2.5cm, right=2.5cm}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{etoolbox}
+\usepackage{needspace}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, calc}
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstset{
+    language=C,
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{blue},
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    numbers=left,
+    tabsize=4,
+    extendedchars=true,
+    showstringspaces=false,
+    literate={á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1 {ñ}{{\~n}}1
+}
+
+\usepackage{graphicx}
+\graphicspath{{../../assets/}}
+\BeforeBeginEnvironment{lstlisting}{\Needspace{4cm}}
+
+\setlength{\headheight}{15pt}
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{Monitorias Sistemas Operativos 2026-II}
+\rhead{Capítulo 0: Vector Dinámico}
+\cfoot{\thepage}
+
+\title{
+\begin{tikzpicture}[remember picture, overlay]
+    \node[anchor=west, inner sep=0pt, xshift=2.5cm, yshift=-2.0cm] at (current page.north west) {
+        \includegraphics[height=1.6cm]{logo_unimagdalena.png}
+    };
+    \node[anchor=east, inner sep=0pt, xshift=-2.5cm, yshift=-2.0cm] at (current page.north east) {
+        \large\textbf{2026-II}
+    };
+\end{tikzpicture}%
+\textbf{Creación de un Vector Dinámico}}
+\author{Malak Sanchez \\ \small Monitorias Sistemas Operativos}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Introducción: Stack vs Heap}
+Para entender la memoria dinámica, primero debemos diferenciar dónde vive cada variable en nuestro programa.
+
+\begin{itemize}
+    \item \textbf{Stack (Pila):} Es memoria automática y rápida. Aquí viven las variables locales (como \texttt{int x}). Su tamaño se define al compilar. Cuando la función termina, esta memoria se libera automáticamente.
+    \item \textbf{Heap (Montículo):} Es un gran bloque de memoria libre gestionado por el programador. Aquí vive la memoria dinámica. Es más lenta que el stack, pero su tamaño puede decidirse \textbf{mientras el programa corre}. Tú eres responsable de pedirla y liberarla.
+\end{itemize}
+
+\begin{center}
+\begin{tikzpicture}[font=\small]
+    \node[draw, fill=blue!10, minimum width=2.1cm, minimum height=0.7cm] (pointer) {\texttt{array}};
+    \foreach \x/\valor in {0/0,1/10,2/20,3/30} {
+        \draw[fill=green!10] (3.2 + \x*1.25,0) rectangle (4.45 + \x*1.25,0.85)
+            node[midway] {\valor};
+        \node[below] at (3.825 + \x*1.25,0) {\x};
+    }
+    \draw[-{Stealth}, thick, red] (pointer.east) -- (3.2,0.43);
+    \node[above] at (5.7,0.85) {Vector de tamaño \texttt{n = 4}};
+\end{tikzpicture}
+\end{center}
+
+\section{Creación de un Vector Dinámico}
+Un \textbf{vector dinámico} es simplemente un arreglo cuyo tamaño se define en tiempo de ejecución.
+
+\subsection{El proceso en 3 pasos}
+\begin{enumerate}
+    \item \textbf{Declarar un puntero:} El puntero vivirá en el \textit{Stack}.
+    \item \textbf{Pedir memoria:} Usamos \texttt{malloc} para reservar espacio en el \textit{Heap}.
+    \item \textbf{Liberar memoria:} Usamos \texttt{free} cuando ya no necesitemos el arreglo.
+\end{enumerate}
+
+\Needspace{12cm}
+\section{Código de Ejemplo}
+\begin{lstlisting}
+#include <stdio.h>
+#include <stdlib.h>
+
+int main(){
+    int n;
+    printf("Enter vector size: ");
+    scanf("%d", &n);
+
+    // 1 and 2. Declare pointer and request memory in the Heap
+    int *array = (int *) malloc(n * sizeof(int));
+
+    // Check if allocation was successful
+    if(array == NULL){
+        printf("Error: Could not allocate memory.\n");
+        return 1;
+    }
+
+    // Use the array as a normal array
+    for(int i=0; i < n; i++){
+        array[i] = i * 10;
+        printf("array[%d] = %d\n", i, array[i]);
+    }
+
+    // 3. Free memory when finished
+    free(array);
+    array = NULL; // Good practice
+
+    return 0;
+}
+\end{lstlisting}
+
+\section{¿Por qué usar malloc y sizeof?}
+La función \texttt{malloc} recibe la cantidad de \textbf{bytes} a reservar. Como no sabemos cuánto pesa un \texttt{int} en todos los sistemas, usamos \texttt{sizeof(int)}. Así, \texttt{n * sizeof(int)} garantiza espacio exacto para $n$ enteros.
+
+\section{Resumen Visual}
+Cuando haces \texttt{int *v = malloc(3 * sizeof(int))}:
+\begin{enumerate}
+    \item En el \textbf{Stack} se crea \texttt{v}.
+    \item En el \textbf{Heap} se buscan $3 \times 4 = 12$ bytes contiguos.
+    \item \texttt{v} guarda la dirección del primer byte de ese bloque en el Heap.
+\end{enumerate}
+
+\end{document}
