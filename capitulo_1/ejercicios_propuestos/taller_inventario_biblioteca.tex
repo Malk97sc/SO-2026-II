@@ -1,0 +1,108 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish,es-noquoting]{babel}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{geometry}
+\geometry{top=2cm, bottom=2cm, left=2.5cm, right=2.5cm}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{etoolbox}
+\usepackage{needspace}
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstset{
+    language=C,
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{blue},
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    numbers=left,
+    tabsize=4,
+    showstringspaces=false,
+    literate={á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1 {ñ}{{\~n}}1
+}
+
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, calc, shapes.geometric}
+\usepackage{graphicx}
+\graphicspath{{../../assets/}}
+\BeforeBeginEnvironment{lstlisting}{\Needspace{4cm}}
+
+\setlength{\headheight}{15pt}
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{Monitorias Sistemas Operativos 2026-II}
+\rhead{Capítulo 1: Gestión de Archivos Secuenciales}
+\cfoot{\thepage}
+
+\title{
+\begin{tikzpicture}[remember picture, overlay]
+    \node[anchor=west, inner sep=0pt, xshift=2.5cm, yshift=-2.0cm] at (current page.north west) {
+        \includegraphics[height=1.6cm]{logo_unimagdalena.png}
+    };
+    \node[anchor=east, inner sep=0pt, xshift=-2.5cm, yshift=-2.0cm] at (current page.north east) {
+        \large\textbf{2026-II}
+    };
+\end{tikzpicture}%
+\textbf{Taller: Procesamiento de Reportes de Estaciones Meteorológicas}}
+\author{Malak Sanchez \\ \small Monitorias Sistemas Operativos}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section*{Introducción}
+El manejo eficiente de archivos es una habilidad fundamental para cualquier programador de sistemas. En este taller, implementará una herramienta que procese un inventario distribuido en múltiples archivos. El objetivo es leer un archivo índice que contiene los nombres de otros archivos de datos y procesar cada uno de forma secuencial.
+
+\section*{Descripción del Problema}
+Usted ha sido contratado para consolidar reportes de estaciones meteorológicas. La información se encuentra organizada de la siguiente manera:
+
+\subsection*{1. Archivo de Índice }
+El archivo \texttt{estaciones.idx} lista las estaciones activas. Su formato consiste en un entero inicial $N$ (número de estaciones), seguido de $N$ nombres de archivos de datos correspondientes.
+\begin{lstlisting}[title=Ejemplo de sedes.idx]
+3
+estacion_costa.dat
+estacion_sierra.dat
+estacion_rio.dat
+\end{lstlisting}
+
+\subsection*{2. Archivos de Sede}
+Cada archivo de estación contiene sus mediciones. El formato es un entero $M$ (número de mediciones), seguido de $M$ líneas con el formato: \texttt{Fecha,Temperatura,Humedad}.
+\begin{lstlisting}[title=Ejemplo de sede\_norte.dat]
+2
+2026-08-20,31.5,78
+2026-08-21,30.0,81
+\end{lstlisting}
+
+\section*{Objetivos del Taller}
+Su programa deberá realizar las siguientes tareas en orden estrictamente secuencial:
+
+\begin{enumerate}
+    \item Recibir el nombre del archivo índice por la línea de comandos (\texttt{argv[1]}).
+    \item Leer el archivo índice y cargar los nombres de los archivos de cada estación en un vector dinámico de strings.
+    \item Recorrer dicho vector y, para cada nombre de archivo:
+    \begin{itemize}
+        \item Abrir el archivo de la estación.
+        \item Leer cada medición (usando \texttt{fscanf} o \texttt{fgets}).
+        \item Imprimir un resumen por consola con el nombre de la estación, el total de mediciones y su temperatura promedio.
+    \end{itemize}
+    \item Liberar toda la memoria dinámica utilizada antes de finalizar.
+\end{enumerate}
+
+\section*{Criterios de Evaluación}
+\begin{itemize}
+    \item Uso correcto de \texttt{malloc} y \texttt{free} para el manejo de strings.
+    \item Apertura y cierre adecuado de todos los descriptores de archivos.
+    \item Validación de argumentos de entrada.
+\end{itemize}
+
+\end{document}

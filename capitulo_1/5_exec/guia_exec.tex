@@ -1,0 +1,190 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish,es-noquoting]{babel}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{geometry}
+\geometry{top=2cm, bottom=2cm, left=2.5cm, right=2.5cm}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{etoolbox}
+\usepackage{needspace}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, calc, shapes.geometric}
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstset{
+    language=C,
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{blue},
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    numbers=left,
+    tabsize=4,
+    extendedchars=true,
+    showstringspaces=false,
+    literate={á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1 {ñ}{{\~n}}1
+}
+
+\usepackage{graphicx}
+\graphicspath{{../../assets/}}
+\BeforeBeginEnvironment{lstlisting}{\Needspace{4cm}}
+
+\setlength{\headheight}{15pt}
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{Monitorias Sistemas Operativos 2026-II}
+\rhead{Capítulo 1: Familia exec()}
+\cfoot{\thepage}
+
+\title{
+\begin{tikzpicture}[remember picture, overlay]
+    \node[anchor=west, inner sep=0pt, xshift=2.5cm, yshift=-2.0cm] at (current page.north west) {
+        \includegraphics[height=1.6cm]{logo_unimagdalena.png}
+    };
+    \node[anchor=east, inner sep=0pt, xshift=-2.5cm, yshift=-2.0cm] at (current page.north east) {
+        \large\textbf{2026-II}
+    };
+\end{tikzpicture}%
+\textbf{Reemplazo de Imagen de Proceso con la Familia exec()}}
+\author{Malak Sanchez \\ \small Monitorias Sistemas Operativos}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Motivación}
+La función \texttt{fork()} nos permite duplicar un proceso existente, pero ambos procesos continúan ejecutando el mismo código fuente. ¿Qué ocurre si deseamos que el nuevo proceso ejecute un programa completamente diferente (como \texttt{ls}, \texttt{grep} o un binario compilado de C)? Para este propósito, los sistemas POSIX proveen la familia de funciones \texttt{exec()}.
+
+\section{Idea Fundamental}
+Las llamadas al sistema de la familia \texttt{exec()} no crean un nuevo proceso. En su lugar, \textbf{reemplazan la imagen de memoria del proceso actual} por un nuevo programa ejecutable. El identificador de proceso (PID) se mantiene exactamente igual, pero el segmento de código, datos, pila y heap son destruidos y sustituidos por los del nuevo programa.
+
+\section{Transformación de la Imagen de Memoria}
+\begin{center}
+\begin{tikzpicture}[font=\small, >=Stealth]
+    \tikzset{
+        proc circle/.style={circle, draw=blue!70!black, fill=blue!10, thick, minimum size=1.8cm, align=center, inner sep=1pt},
+        proc triangle/.style={regular polygon, regular polygon sides=3, draw=green!60!black, fill=green!15, thick, minimum size=1.8cm, align=center, inner sep=0pt},
+        proc square/.style={rectangle, draw=orange!80!black, fill=orange!15, thick, minimum size=1.6cm, align=center, inner sep=3pt},
+        exec arrow/.style={->, >=Stealth, ultra thick, shorten <=4pt, shorten >=4pt}
+    }
+
+    % Process 1 (Circle -> Triangle)
+    \node (p1_before) [proc circle] {Proceso 1\\{\tiny (PID 1024)}\\\textbf{main.c}};
+    \node (p1_after) [proc triangle, right=4.2cm of p1_before] {\vspace{0.25cm}Proceso 1\\{\tiny (PID 1024)}\\\textbf{/bin/ls}};
+    
+    \draw[exec arrow, color=blue!80!black] (p1_before) -- (p1_after) 
+        node[midway, above=4pt, font=\small\bfseries] {\texttt{execvp("ls", ...)}}
+        node[midway, below=4pt, font=\tiny\itshape, align=center] {Círculo $\to$ Triángulo\\(Mismo PID, nueva imagen)};
+
+    % Process 2 (Circle -> Square)
+    \node (p2_before) [proc circle, below=1.8cm of p1_before] {Proceso 2\\{\tiny (PID 1025)}\\\textbf{main.c}};
+    \node (p2_after) [proc square, right=4.2cm of p2_before] {Proceso 2\\{\tiny (PID 1025)}\\\textbf{/bin/grep}};
+    
+    \draw[exec arrow, color=orange!80!black] (p2_before) -- (p2_after) 
+        node[midway, above=4pt, font=\small\bfseries] {\texttt{execvp("grep", ...)}}
+        node[midway, below=4pt, font=\tiny\itshape, align=center] {Círculo $\to$ Cuadrado\\(Mismo PID, nueva imagen)};
+\end{tikzpicture}
+\end{center}
+
+\section{Variantes de la Familia exec()}
+Existen diferentes funciones según cómo reciben la ruta del ejecutable y los argumentos:
+\begin{itemize}
+    \item \textbf{l (lista):} Los argumentos se pasan como una lista de parámetros terminada en \texttt{NULL} (ej. \texttt{execl}, \texttt{execlp}).
+    \item \textbf{v (vector):} Los argumentos se pasan en un arreglo (\textit{vector}) de cadenas terminado en \texttt{NULL} (ej. \texttt{execv}, \texttt{execvp}).
+    \item \textbf{p (PATH):} Busca el ejecutable en las rutas definidas en la variable de entorno \texttt{PATH} (ej. \texttt{execlp}, \texttt{execvp}).
+    \item \textbf{e (entorno):} Permite pasar un arreglo personalizado de variables de entorno (ej. \texttt{execve}).
+\end{itemize}
+
+\section{Sintaxis Básica}
+\begin{lstlisting}[numbers=none]
+#include <unistd.h>
+
+// Uso con vector y busqueda en PATH:
+char *args[] = {"ls", "-l", "/tmp", NULL};
+execvp("ls", args);
+
+// Uso con lista:
+execlp("ls", "ls", "-l", "/tmp", (char *)NULL);
+\end{lstlisting}
+
+\section{Ejemplo Mínimo Funcional}
+\begin{lstlisting}
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/wait.h>
+
+int main() {
+    pid_t pid = fork();
+
+    if (pid < 0) {
+        perror("fork failed");
+        return 1;
+    } else if (pid == 0) {
+        // Codigo del Hijo: Reemplazar imagen por '/bin/ls'
+        printf("[HIJO PID %d] Ejecutando execvp...\n", getpid());
+        char *args[] = {"ls", "-la", NULL};
+        execvp("ls", args);
+
+        // Si execvp tiene exito, ESTA LINEA NUNCA SE EJECUTA
+        perror("execvp failed");
+        exit(1);
+    } else {
+        // Codigo del Padre: Esperar a que el hijo termine
+        printf("[PADRE PID %d] Esperando al hijo (PID %d)...\n", getpid(), pid);
+        wait(NULL);
+        printf("[PADRE PID %d] El hijo finalizo exitosamente.\n", getpid());
+    }
+
+    return 0;
+}
+\end{lstlisting}
+
+\section{Explicación Paso a Paso}
+\begin{enumerate}
+    \item \texttt{fork()}: Crea un proceso hijo duplicando la memoria del padre.
+    \item \texttt{execvp("ls", args)}: En el proceso hijo, sustituye su espacio de direcciones por la imagen binaria del comando \texttt{ls}.
+    \item \textbf{Punto de no retorno:} Si la llamada a \texttt{execvp} es exitosa, el código del programa original tras la línea del \texttt{execvp} desaparece por completo y el control se entrega a la función \texttt{main} del comando ejecutado.
+    \item Si \texttt{execvp} falla (por ejemplo, si el comando no existe), retorna $-1$ y se ejecuta la siguiente línea (\texttt{perror}).
+\end{enumerate}
+
+\section{Qué Ocurre en Memoria}
+Al invocar cualquier función de la familia \texttt{exec}:
+\begin{itemize}
+    \item Los segmentos de Código (\textit{Text}), Datos (\textit{Data}), BSS, Pila (\textit{Stack}) y Heap son destruidos.
+    \item El Kernel lee el encabezado ELF del ejecutable especificado y carga los nuevos segmentos en memoria.
+    \item El contador de programa (PC) se inicializa en el punto de entrada del nuevo ejecutable.
+    \item \textbf{Propiedades preservadas:} El PID, el PPID, los descriptores de archivos abiertos (salvo que tengan la bandera \texttt{FD\_CLOEXEC}) y las credenciales de usuario se mantienen intactos.
+\end{itemize}
+
+\section{Patrones Comunes de Uso}
+El patrón clásico en sistemas operativos UNIX es la combinación \textbf{\texttt{fork()}} + \textbf{\texttt{exec()}} + \textbf{\texttt{wait()}}, el cual forma la base de la ejecución de comandos en cualquier emulador de Shell o terminal.
+
+\section{Errores Comunes}
+\begin{itemize}
+    \item \textbf{Olvidar terminar la lista/arreglo con \texttt{NULL}:} Tanto el vector de argumentos de \texttt{execv} como la lista de \texttt{execl} requieren obligatoriamente un apuntador \texttt{NULL} al final. De lo contrario, causará acceso inválido a memoria (\textit{Segmentation Fault}).
+    \item \textbf{Escribir código despues de \texttt{exec}:} Pensar que la función \texttt{exec} retornará al código fuente original tras completar el nuevo programa. Recordar que \texttt{exec} solo retorna si ocurre un error.
+\end{itemize}
+
+\section{Buenas Prácticas}
+\begin{itemize}
+    \item Colocar siempre una llamada a \texttt{perror()} y \texttt{exit(EXIT\_FAILURE)} inmediatamente después de la invocación a \texttt{exec()}, para gestionar adecuadamente posibles errores de carga.
+    \item Usar \texttt{execvp} cuando se ejecuten comandos estándar del sistema instalados en las rutas habituales del sistema.
+\end{itemize}
+
+\section{Ejercicios}
+\begin{enumerate}
+    \item Escriba un programa en C que cree dos procesos hijos usando \texttt{fork()}. Haga que el primero ejecute \texttt{pwd} y el segundo \texttt{uname -s} mediante la familia \texttt{exec}.
+    \item Investigue \texttt{execve} y escriba un programa que ejecute un binario sencillo con un entorno personalizado que contenga una variable \texttt{TURNO}.
+\end{enumerate}
+
+\end{document}
