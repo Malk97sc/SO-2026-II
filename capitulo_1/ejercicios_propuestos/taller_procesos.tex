@@ -41,11 +41,34 @@
 \begin{ejerciciografico}
 \subsection*{Ejercicio 2}
 \begin{center}
-\begin{tikzpicture}[node distance=.85cm, every node/.style={draw,circle,inner sep=2.2pt,fill=black}]
-\node (r) {}; \node (a) [below left=of r] {}; \node (b) [below=of r] {}; \node (c) [below right=of r] {};
-\draw (r)--(a) (r)--(b) (r)--(c);
-\node (a1) [below left=of a] {}; \node (a2) [below right=of a] {}; \draw (a)--(a1) (a)--(a2);
-\node (b1) [below=of b] {}; \node (b2) [below=of b1] {}; \draw (b)--(b1) (b1)--(b2);
+\begin{tikzpicture}[
+    every node/.style={
+        draw,
+        circle,
+        inner sep=2.2pt,
+        fill=black
+    }
+]
+\node (r) at (0, 0) {};
+\node (a) at (-1.8, -0.9) {};
+\node (b) at (0, -0.9) {};
+\node (c) at (1.8, -0.9) {};
+
+\node (a1) at (-2.4, -1.8) {};
+\node (a2) at (-1.2, -1.8) {};
+
+\node (b1) at (0, -1.8) {};
+\node (b2) at (0, -2.7) {};
+
+\draw (r)--(a);
+\draw (r)--(b);
+\draw (r)--(c);
+
+\draw (a)--(a1);
+\draw (a)--(a2);
+
+\draw (b)--(b1);
+\draw (b1)--(b2);
 \end{tikzpicture}
 \end{center}
 \end{ejerciciografico}
