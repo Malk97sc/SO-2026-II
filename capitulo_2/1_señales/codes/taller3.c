@@ -40,12 +40,13 @@ int main(int argc, char **argv){
         for(int i=0; i < rows; i++){
             for(int j=0; j < cols; j++){
                 value = mtx[i][j];
+                send_count(child, value);
                 //printf("Sending Value: %d\n", value);
-                for(int k=0; k < value; k++){
+                /*for(int k=0; k < value; k++){
                     send_to(child, SIGUSR1);
                 }
                 send_to(child, SIGUSR2);
-                pause();
+                pause();*/
             }
         }
         send_to(child, SIGUSR2);
@@ -58,20 +59,18 @@ int main(int argc, char **argv){
         pause();
         while(end_flag != 0){
             pause();
-            value++;
         }
-        rows = value;
-        value = 0;    
+        rows = count;
+        count = 0;    
 
         send_to(getppid(), SIGUSR2);
         pause();
 
         while(end_flag != 0){
             pause();
-            value++;
         }
-        cols = value;
-        value = 0;
+        cols = count;
+        count = 0;
 
         printf("Rows: %d, Cols: %d\n", rows, cols);
 
@@ -90,9 +89,10 @@ int main(int argc, char **argv){
                 value = 0;
                 while(end_flag != 0){
                     pause();
-                    value++;
-                    mtx[i][j] = value;
                 }
+                value = count;
+                count = 0;
+                mtx[i][j] = value;
                 //printf("Value: %d\n", value);
                 send_to(getppid(), SIGUSR2);
                 pause();
@@ -166,6 +166,7 @@ void signal_handler(int sig){
     switch(sig){
         case SIGUSR1:{
             end_flag = 1;
+            count++;
             break;
         }
         case SIGUSR2:{
