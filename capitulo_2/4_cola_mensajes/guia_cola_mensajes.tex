@@ -1,0 +1,745 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish,es-noquoting]{babel}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{geometry}
+\geometry{top=2cm, bottom=2cm, left=2.5cm, right=2.5cm}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{etoolbox}
+\usepackage{needspace}
+\usepackage{array}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, calc}
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstset{
+    language=C,
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{blue},
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    numbers=left,
+    tabsize=4,
+    extendedchars=true,
+    showstringspaces=false,
+    inputencoding=utf8,
+    literate={á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1 {ñ}{{\~n}}1 {¡}{{\textexclamdown}}1 {¿}{{\textquestiondown}}1
+}
+
+\usepackage{graphicx}
+\graphicspath{{../../assets/}}
+\BeforeBeginEnvironment{lstlisting}{\Needspace{4cm}}
+
+% Logo institucional: se incluye solo si el archivo existe, de modo que
+% el documento compile aunque no se disponga de la carpeta de assets.
+\newcommand{\unilogo}{%
+  \IfFileExists{../../assets/logo_unimagdalena.png}%
+    {\includegraphics[height=1.6cm]{logo_unimagdalena.png}}%
+    {\IfFileExists{logo_unimagdalena.png}%
+      {\includegraphics[height=1.6cm]{logo_unimagdalena.png}}%
+      {}}%
+}
+
+\setlength{\headheight}{15pt}
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{Monitorias Sistemas Operativos 2026-II}
+\rhead{Capítulo 2: Colas de Mensajes}
+\cfoot{\thepage}
+
+\title{
+\begin{tikzpicture}[remember picture, overlay]
+    \node[anchor=west, inner sep=0pt, xshift=2.5cm, yshift=-2.0cm] at (current page.north west) {
+        \unilogo
+    };
+    \node[anchor=east, inner sep=0pt, xshift=-2.5cm, yshift=-2.0cm] at (current page.north east) {
+        \large\textbf{2026-II}
+    };
+\end{tikzpicture}%
+\textbf{Colas de Mensajes (Message Queues)}}
+\author{Malak Sanchez \\ \small Monitorias Sistemas Operativos}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Motivación}
+Los pipes transportan un flujo de bytes sin fronteras entre procesos emparentados, y la memoria compartida es muy rápida pero obliga al programador a sincronizar el acceso. Las \textbf{Colas de Mensajes} (\textit{message queues}) ofrecen un punto intermedio: el kernel mantiene una lista de \textbf{mensajes completos}, cada uno con un tipo, y se encarga además de bloquear y despertar a los procesos cuando corresponde. En esta guía estudiamos las colas de mensajes del estilo \textbf{Unix System V}, con las llamadas \texttt{msgget()}, \texttt{msgsnd()}, \texttt{msgrcv()} y \texttt{msgctl()}.
+
+\paragraph{Conocimientos previos.} Uso de \texttt{fork()} y \texttt{wait()}, estructuras (\texttt{struct}) en C, y el patrón de recursos System V visto en la guía de Memoria Compartida (\texttt{shmget}, \texttt{shmat}, \texttt{shmctl}).
+
+\section{Objetivos de Aprendizaje}
+Al terminar esta guía, el estudiante debe ser capaz de:
+\begin{itemize}
+    \item Explicar qué es una cola de mensajes y en qué se diferencia de un pipe y de la memoria compartida.
+    \item Definir la estructura de un mensaje y calcular correctamente el tamaño (\texttt{msgsz}) que se pasa a las llamadas.
+    \item Obtener una cola mediante \texttt{ftok()} o \texttt{IPC\_PRIVATE}.
+    \item Utilizar \texttt{msgget()}, \texttt{msgsnd()}, \texttt{msgrcv()} y \texttt{msgctl()} verificando sus códigos de error.
+    \item Seleccionar mensajes por tipo con el argumento \texttt{msgtyp} (valores $0$, positivo y negativo).
+    \item Explicar cuándo se bloquean \texttt{msgsnd()} y \texttt{msgrcv()} y cómo se elimina una cola del kernel.
+\end{itemize}
+
+\section{Idea Fundamental}
+Una cola de mensajes es una lista de mensajes que mantiene el \textbf{kernel}, identificada por un entero (\texttt{msqid}). Los procesos intercambian \textbf{mensajes completos}, con límites definidos, y no un flujo de bytes como en las tuberías. Como los mensajes viven en el kernel, el emisor puede terminar y el mensaje sigue disponible para el receptor.
+
+\begin{center}
+\begin{tikzpicture}[font=\small, >=Stealth,
+    proc/.style={draw, thick, fill=blue!5, minimum width=3cm, minimum height=1.2cm, align=center},
+    msgb/.style={draw, thick, fill=yellow!20, minimum width=1.7cm, minimum height=1cm, align=center, font=\scriptsize},
+    mapping/.style={->, ultra thick, violet!70!black, shorten <=2pt, shorten >=2pt}]
+
+    % --- LAYER: User Space ---
+    \node[proc] (p1) at (-4, 4.2) {Proceso P1 \\ \footnotesize (Emisor)};
+    \node[proc] (p2) at (4, 4.2) {Proceso P2 \\ \footnotesize (Receptor)};
+
+    % --- LAYER: Kernel Space ---
+    \draw[dashed, gray!40] (-6, 2.5) -- (6, 2.5) node[right, color=gray] {\footnotesize Kernel};
+    \draw[thick, fill=orange!5, rounded corners=3pt] (-4.6, 0.1) rectangle (4.6, 1.7);
+
+    % Messages: the rightmost one is the front of the queue
+    \node[msgb] (m4) at (-3.3, 0.9) {tipo 1 \\ 3.14};
+    \node[msgb] (m3) at (-1.1, 0.9) {tipo 2 \\ 42};
+    \node[msgb] (m2) at (1.1, 0.9) {tipo 1 \\ hola};
+    \node[msgb] (m1) at (3.3, 0.9) {tipo 3 \\ p=7};
+
+    \node[font=\scriptsize\itshape, gray!80!black] at (-3.3, -0.25) {final};
+    \node[font=\scriptsize\itshape, gray!80!black] at (3.3, -0.25) {frente};
+    \node[font=\scriptsize\itshape, gray!80!black] at (0, -0.25) {cola de mensajes (\texttt{msqid})};
+
+    % --- Connections ---
+    \draw[mapping] (p1.south) -- (-3.3, 1.7) node[midway, left=3pt, font=\bfseries] {msgsnd()};
+    \draw[mapping] (3.3, 1.7) -- (p2.south) node[midway, right=3pt, font=\bfseries] {msgrcv()};
+\end{tikzpicture}
+\end{center}
+
+Las propiedades esenciales son:
+\begin{itemize}
+    \item Cada mensaje tiene un \textbf{tipo} (un \texttt{long} mayor que $0$) y un \textbf{cuerpo} de tamaño variable.
+    \item Sirven entre procesos \textbf{no emparentados}: la cola se localiza mediante una clave (\texttt{key\_t}).
+    \item Orden \textbf{FIFO}: el receptor toma el primer mensaje de la cola, o el primero de un tipo dado.
+    \item La cola \textbf{persiste} hasta que se elimina (\texttt{msgctl} con \texttt{IPC\_RMID} o el comando \texttt{ipcrm}) o se reinicia el sistema.
+\end{itemize}
+
+\section{Comparación con Otros Mecanismos IPC}
+La siguiente tabla ubica la cola de mensajes frente a los mecanismos vistos en las guías anteriores.
+
+\begin{table}[h]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{|>{\raggedright\arraybackslash}p{2.0cm}|>{\raggedright\arraybackslash}p{3.2cm}|>{\raggedright\arraybackslash}p{2.5cm}|>{\raggedright\arraybackslash}p{2.6cm}|>{\raggedright\arraybackslash}p{3.1cm}|}
+\hline
+\textbf{Mecanismo} & \textbf{Unidad de datos} & \textbf{Dirección} & \textbf{Procesos} & \textbf{Sincronización} \\ \hline
+Señales & Evento: solo el número de la señal, sin datos & De un proceso a otro & Cualquiera (por \texttt{pid}) & Asíncrona, mediante un manejador \\ \hline
+Pipe & Flujo de bytes, sin límites de mensaje & Unidireccional & Emparentados (heredan los descriptores) & Implícita: \texttt{read} bloquea si no hay datos \\ \hline
+Memoria compartida & Bytes en una región de memoria común & Bidireccional & Cualquiera (por clave) & Explícita: semáforos o señales \\ \hline
+Cola de mensajes & Mensajes con tipo y límites definidos & Bidireccional, multiplexada por tipos & Cualquiera (por clave) & Implícita: \texttt{msgrcv} bloquea si no hay mensaje \\ \hline
+\end{tabular}
+\end{table}
+
+La cola reúne \textbf{estructura} (mensajes con tipo) y \textbf{sincronización implícita} provista por el kernel. Su costo es que cada mensaje se copia dos veces (usuario $\to$ kernel $\to$ usuario); la memoria compartida evita esas copias, pero exige sincronizar explícitamente.
+
+\section{Ciclo de Vida de una Cola}
+El uso de una cola sigue el mismo patrón que la memoria compartida System V: un proceso crea el recurso, todos lo usan y uno lo elimina.
+
+\begin{center}
+\begin{tikzpicture}[font=\small, >=Stealth, node distance=1.1cm,
+    stepbox/.style={draw, thick, fill=blue!5, minimum width=3.4cm, minimum height=1.1cm, align=center},
+    note/.style={font=\scriptsize, text width=3.6cm, align=center},
+    flow/.style={->, ultra thick, violet!70!black, shorten <=2pt, shorten >=2pt}]
+
+    \node[stepbox] (a) {1. Crear / obtener \\ \footnotesize\texttt{msgget()}};
+    \node[stepbox, right=of a] (b) {2. Enviar / recibir \\ \footnotesize\texttt{msgsnd()} / \texttt{msgrcv()}};
+    \node[stepbox, right=of b] (c) {3. Eliminar \\ \footnotesize\texttt{msgctl(IPC\_RMID)}};
+
+    \draw[flow] (a) -- (b);
+    \draw[flow] (b) -- (c);
+    \draw[flow] (b.north east) .. controls +(0.5,0.9) and +(-0.5,0.9) .. (b.north west);
+
+    \node[note, below=4pt of a] {Un solo proceso la crea; los demás obtienen el mismo \texttt{msqid} con la misma clave.};
+    \node[note, below=4pt of b] {Se repite mientras dure la comunicación, en cualquier orden y desde cualquier proceso.};
+    \node[note, below=4pt of c] {Borra la cola y sus mensajes. Si nadie la elimina, sobrevive al proceso.};
+\end{tikzpicture}
+\end{center}
+
+\paragraph{Analogía con memoria compartida.} \texttt{shmget()} $\leftrightarrow$ \texttt{msgget()}; \texttt{shmat()}/\texttt{shmdt()} $\leftrightarrow$ \texttt{msgsnd()}/\texttt{msgrcv()}; \texttt{shmctl(IPC\_RMID)} $\leftrightarrow$ \texttt{msgctl(IPC\_RMID)}. En ambos casos se obtiene un identificador a partir de una clave, se opera sobre el recurso y, al terminar, se elimina del kernel.
+
+\newpage
+
+\section{Estructura de un Mensaje}
+Todo mensaje se compone de un tipo y un cuerpo. La plantilla estándar es:
+
+\begin{lstlisting}[numbers=none]
+struct msgbuf {
+    long mtype;      /* message type, must be > 0 */
+    char mtext[N];   /* message body */
+};
+\end{lstlisting}
+
+\begin{center}
+\begin{tikzpicture}[font=\small, >=Stealth]
+    \draw[thick, fill=cyan!10] (0, 0) rectangle (2.4, 0.9) node[midway] {\texttt{long mtype}};
+    \draw[thick, fill=yellow!20] (2.4, 0) rectangle (9, 0.9) node[midway] {cuerpo del mensaje};
+    \draw[->, thick] (-1.3, 0.45) -- (0, 0.45) node[pos=0, left] {\texttt{msgp}};
+    \node[font=\footnotesize] at (1.2, -0.35) {8 bytes (64 bits)};
+    \draw[<->, thick] (2.4, -0.3) -- (9, -0.3);
+    \node[font=\footnotesize] at (5.7, -0.65) {\texttt{msgsz} bytes};
+\end{tikzpicture}
+\end{center}
+
+\paragraph{Descripción de los campos}
+\begin{itemize}
+    \item \textbf{mtype:} entero largo positivo que clasifica el mensaje y permite al receptor elegir cuál recibir.
+    \item \textbf{mtext (cuerpo):} cualquier dato: texto, una \texttt{struct}, un arreglo. El tamaño que se pasa a \texttt{msgsnd} y \texttt{msgrcv} es \textbf{solo el del cuerpo}, sin contar \texttt{mtype}.
+    \item \texttt{msgbuf} es solo una plantilla: cada programa define su propia \texttt{struct}, con \texttt{long mtype} como \textbf{primer campo}. Emisor y receptor deben usar la misma estructura para interpretar el cuerpo.
+\end{itemize}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{|l|l|}
+\hline
+\textbf{Declaración del cuerpo} & \textbf{\texttt{msgsz} al enviar} \\ \hline
+\texttt{int value;} & \texttt{sizeof(int)} \\ \hline
+\texttt{char mtext[256];} & \texttt{strlen(mtext) + 1} \\ \hline
+\texttt{struct data d;} & \texttt{sizeof(struct data)} \\ \hline
+\end{tabular}
+\end{table}
+
+El kernel copia exactamente \texttt{msgsz} bytes situados justo después de \texttt{mtype}. En el caso de texto se envía \texttt{strlen + 1} para incluir el terminador \texttt{'\textbackslash 0'}.
+
+\paragraph{Nota adicional (explicación pedagógica).} El \texttt{sizeof} de la \texttt{struct} completa puede ser mayor que $\texttt{sizeof(long)} + \texttt{msgsz}$ debido al relleno (\textit{padding}) de alineación que inserta el compilador. Por ejemplo, con \texttt{struct \{ long mtype; int value; \}} en una arquitectura de 64 bits, \texttt{sizeof} vale 16 mientras que el cuerpo mide 4 bytes. Por eso \texttt{msgsz} se calcula siempre a partir del cuerpo y nunca con \texttt{sizeof(m)}.
+
+\section{Identificando la Cola: \texttt{ftok()} e \texttt{IPC\_PRIVATE}}
+Dos procesos independientes acceden a la \textbf{misma cola} si pasan la \textbf{misma clave} a \texttt{msgget()}. Hay dos formas de obtener esa clave:
+
+\begin{lstlisting}[numbers=none]
+#include <sys/types.h>
+#include <sys/ipc.h>
+
+key_t ftok(const char *pathname, int proj_id);
+\end{lstlisting}
+
+\begin{itemize}
+    \item \textbf{ftok(pathname, proj\_id):} deriva la clave de un archivo \textbf{existente} y de un identificador de proyecto (8 bits, distinto de $0$). Mismo archivo y mismo identificador producen la misma clave. Es la opción para procesos \textbf{independientes}.
+    \item \textbf{IPC\_PRIVATE:} crea una cola nueva sin clave pública; solo la comparten los procesos que heredan el \texttt{msqid} mediante \texttt{fork()}. Es la opción para procesos \textbf{emparentados}.
+\end{itemize}
+
+\paragraph{Utilidades de línea de comandos.} \texttt{ipcs -q} lista las colas existentes y \texttt{ipcrm -q msqid} elimina una. Ambas son indispensables para depurar y para limpiar colas que quedaron huérfanas.
+
+\begin{lstlisting}[language={}, numbers=none]
+$ ipcs -q
+------ Message Queues --------
+key        msqid      owner      perms      used-bytes   messages
+0x41000155 5          root       666        24           2
+$ ipcrm -q 5          # remove the queue manually
+\end{lstlisting}
+
+\paragraph{Nota adicional (explicación pedagógica).} En Linux, el byte más significativo de la clave que muestra \texttt{ipcs} corresponde al \texttt{proj\_id}: con \texttt{ftok("/tmp", 'A')} la clave empieza por \texttt{0x41}, el código ASCII de \texttt{'A'}. Además, el archivo usado en \texttt{ftok()} debe existir y conservar su identidad: si se elimina y se vuelve a crear, la clave derivada puede cambiar.
+
+\newpage
+
+\section{Sintaxis Básica}
+\begin{lstlisting}[numbers=none]
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/msg.h>
+
+int     msgget(key_t key, int msgflg);
+int     msgsnd(int msqid, const void *msgp, size_t msgsz, int msgflg);
+ssize_t msgrcv(int msqid, void *msgp, size_t msgsz, long msgtyp, int msgflg);
+int     msgctl(int msqid, int cmd, struct msqid_ds *buf);
+\end{lstlisting}
+
+\paragraph{msgget(): crear u obtener la cola}
+Crea una cola nueva o devuelve el identificador de la cola asociada a la clave. En éxito retorna el \texttt{msqid} (un entero $\geq 0$); en falla retorna $-1$ y \texttt{errno} indica la causa (\texttt{EEXIST}, \texttt{ENOENT}, \texttt{EACCES}, \texttt{ENOSPC}).
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{|l|l|p{7.2cm}|}
+\hline
+\textbf{Argumento} & \textbf{Valor} & \textbf{Significado} \\ \hline
+\texttt{key} & \texttt{IPC\_PRIVATE} & Cola nueva y privada: solo para procesos emparentados (\texttt{fork}). \\ \hline
+\texttt{key} & \texttt{ftok(path, id)} & Clave pública compartida entre procesos independientes. \\ \hline
+\texttt{msgflg} & \texttt{IPC\_CREAT | 0666} & Crea la cola si no existe; si existe, la abre. Los 9 bits bajos son los permisos. \\ \hline
+\texttt{msgflg} & \texttt{IPC\_CREAT | IPC\_EXCL} & Crea la cola; falla con \texttt{EEXIST} si ya existe (garantiza ser el creador). \\ \hline
+\texttt{msgflg} & \texttt{0} & Solo accede a una cola existente; falla con \texttt{ENOENT} si no existe. \\ \hline
+\end{tabular}
+\end{table}
+
+\noindent Los límites por defecto en Linux, según las diapositivas, son los siguientes (pueden variar según el kernel y la distribución; se consultan en \texttt{/proc/sys/kernel/}):
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{|l|r|l|}
+\hline
+\textbf{Límite} & \textbf{Valor} & \textbf{Parámetro del kernel} \\ \hline
+Tamaño máximo de un mensaje & 8.192 bytes & \texttt{msgmax} \\ \hline
+Bytes máximos almacenados en una cola & 16.384 bytes & \texttt{msgmnb} \\ \hline
+Número máximo de colas en el sistema & 32.000 & \texttt{msgmni} \\ \hline
+\end{tabular}
+\end{table}
+
+\paragraph{msgsnd(): enviar un mensaje}
+Copia un mensaje desde el proceso al \textbf{final} de la cola. En éxito retorna $0$ y, al retornar, el mensaje ya está en el kernel, por lo que el proceso puede reutilizar su buffer. En falla retorna $-1$ y \texttt{errno} vale \texttt{EAGAIN}, \texttt{EIDRM}, \texttt{EINTR}, \texttt{EINVAL} o \texttt{EACCES}.
+\begin{itemize}
+    \item \textbf{msqid:} identificador válido de la cola.
+    \item \textbf{msgp:} puntero a la estructura del mensaje; \texttt{mtype} debe ser $> 0$.
+    \item \textbf{msgsz:} tamaño del \textbf{cuerpo} en bytes, sin contar \texttt{mtype} (puede ser $0$; máximo \texttt{msgmax}).
+    \item \textbf{msgflg:} $0$ $\to$ se bloquea si la cola está llena; \texttt{IPC\_NOWAIT} $\to$ retorna $-1$ con \texttt{EAGAIN}.
+\end{itemize}
+
+\paragraph{msgrcv(): recibir un mensaje}
+Extrae de la cola el primer mensaje que cumple el criterio de tipo y lo copia en el buffer del proceso. En éxito retorna el \textbf{número de bytes copiados en el cuerpo}; en falla retorna $-1$ y \texttt{errno} vale \texttt{ENOMSG}, \texttt{E2BIG}, \texttt{EIDRM} o \texttt{EINTR}.
+\begin{itemize}
+    \item \textbf{msqid:} identificador válido de la cola.
+    \item \textbf{msgp:} buffer donde se copia el mensaje (\texttt{mtype} más cuerpo).
+    \item \textbf{msgsz:} \textbf{capacidad} del cuerpo en el buffer del receptor.
+    \item \textbf{msgtyp:} criterio de selección del mensaje (sección siguiente).
+    \item \textbf{msgflg:} \texttt{IPC\_NOWAIT} $\to$ no bloquea (\texttt{ENOMSG}); \texttt{MSG\_NOERROR} $\to$ trunca el mensaje si supera \texttt{msgsz}. Sin \texttt{MSG\_NOERROR}, un mensaje más grande que \texttt{msgsz} produce \texttt{E2BIG} y el mensaje \textbf{permanece en la cola}.
+\end{itemize}
+
+\paragraph{msgctl(): controlar la cola}
+Consulta, modifica o elimina la cola y su estructura de control en el kernel. En éxito retorna $0$; en falla $-1$ con \texttt{errno} igual a \texttt{EIDRM}, \texttt{EINVAL}, \texttt{EPERM} o \texttt{EACCES}.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{|l|p{5.6cm}|p{5.2cm}|}
+\hline
+\textbf{cmd} & \textbf{Efecto} & \textbf{Observaciones} \\ \hline
+\texttt{IPC\_STAT} & Copia en \texttt{buf} la estructura \texttt{msqid\_ds}: permisos, número de mensajes, capacidad, pids del último emisor y receptor. & Solo requiere permiso de lectura sobre la cola. \\ \hline
+\texttt{IPC\_SET} & Escribe en la cola los campos \texttt{msg\_perm.uid}, \texttt{msg\_perm.gid}, \texttt{msg\_perm.mode} y \texttt{msg\_qbytes} tomados de \texttt{buf}. & Solo el propietario, el creador o root. Subir \texttt{msg\_qbytes} por encima de \texttt{msgmnb} exige privilegios. \\ \hline
+\texttt{IPC\_RMID} & Elimina de inmediato la cola y todos sus mensajes; los procesos bloqueados en \texttt{msgsnd}/\texttt{msgrcv} despiertan con \texttt{EIDRM}. & La cola no desaparece al terminar el proceso: eliminarla es responsabilidad del programador (o usar \texttt{ipcrm}). Con \texttt{IPC\_RMID}, \texttt{buf} es \texttt{NULL}. \\ \hline
+\end{tabular}
+\end{table}
+
+La estructura de control \texttt{struct msqid\_ds} contiene, entre otros, los siguientes campos:
+\begin{itemize}
+    \item \texttt{msg\_perm}: permisos (\texttt{uid}, \texttt{gid}, \texttt{mode}).
+    \item \texttt{msg\_stime}, \texttt{msg\_rtime}, \texttt{msg\_ctime}: hora del último \texttt{msgsnd}, del último \texttt{msgrcv} y del último cambio.
+    \item \texttt{msg\_qnum}: número de mensajes actualmente en la cola.
+    \item \texttt{msg\_qbytes}: bytes máximos permitidos en la cola.
+    \item \texttt{msg\_lspid}, \texttt{msg\_lrpid}: pid del último emisor y del último receptor.
+\end{itemize}
+
+\begin{lstlisting}
+int msqid = msgget(IPC_PRIVATE, IPC_CREAT | 0600);
+struct msqid_ds info;
+
+if (msgctl(msqid, IPC_STAT, &info) == -1) {
+    perror("msgctl");
+    exit(EXIT_FAILURE);
+}
+printf("Messages in queue: %lu\n", (unsigned long) info.msg_qnum);
+printf("Max bytes in queue: %lu\n", (unsigned long) info.msg_qbytes);
+
+msgctl(msqid, IPC_RMID, NULL); // Remove the queue
+\end{lstlisting}
+
+En una cola recién creada, este fragmento imprime $0$ mensajes y una capacidad de $16384$ bytes (el valor de \texttt{msgmnb}).
+
+\newpage
+
+\section{Selección por Tipo: el Argumento \texttt{msgtyp}}
+El tipo permite \textbf{multiplexar} varios canales lógicos en una sola cola: peticiones y respuestas, un canal por cliente, o prioridades. El argumento \texttt{msgtyp} de \texttt{msgrcv()} decide qué mensaje se extrae. Considere la siguiente cola, donde el frente es el mensaje más antiguo:
+
+\begin{center}
+\begin{tikzpicture}[font=\small, >=Stealth,
+    msgb/.style={draw, thick, fill=yellow!20, minimum width=1.7cm, minimum height=1cm, align=center, font=\scriptsize}]
+    \node[msgb] (q4) at (0, 0) {tipo 1 \\ (4º)};
+    \node[msgb] (q3) at (2.2, 0) {tipo 2 \\ (3º)};
+    \node[msgb] (q2) at (4.4, 0) {tipo 1 \\ (2º)};
+    \node[msgb] (q1) at (6.6, 0) {tipo 3 \\ (1º)};
+    \node[font=\scriptsize\itshape, gray!80!black] at (0, -0.9) {final};
+    \node[font=\scriptsize\itshape, gray!80!black] at (6.6, -0.9) {frente};
+\end{tikzpicture}
+\end{center}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{|l|p{6.2cm}|l|}
+\hline
+\textbf{msgtyp} & \textbf{Mensaje que se recibe} & \textbf{Con la cola del ejemplo} \\ \hline
+$0$ & El primer mensaje de la cola, sin importar su tipo. & tipo 3 (1º) \\ \hline
+$> 0$ & El primer mensaje cuyo tipo sea igual a \texttt{msgtyp}. & \texttt{msgtyp = 2} $\to$ tipo 2 (3º) \\ \hline
+$< 0$ & El primer mensaje con el menor tipo que sea $\leq |\texttt{msgtyp}|$. & \texttt{msgtyp = -2} $\to$ tipo 1 (2º) \\ \hline
+$> 0$ con \texttt{MSG\_EXCEPT} & El primer mensaje cuyo tipo sea distinto de \texttt{msgtyp}. & \texttt{msgtyp = 3} $\to$ tipo 1 (2º) \\ \hline
+\end{tabular}
+\end{table}
+
+Si ningún mensaje coincide, \texttt{msgrcv()} se bloquea o, con \texttt{IPC\_NOWAIT}, retorna $-1$ con \texttt{ENOMSG}.
+
+\paragraph{Ejemplo resuelto: caso $\texttt{msgtyp} < 0$.} Con la cola anterior y \texttt{msgtyp = -2}, el procedimiento es:
+\begin{enumerate}
+    \item Calcular $|\texttt{msgtyp}| = 2$ y conservar solo los mensajes con tipo $\leq 2$: el tipo 1 (2º), el tipo 2 (3º) y el tipo 1 (4º). El tipo 3 queda descartado.
+    \item Entre los candidatos, el menor tipo presente es $1$.
+    \item De los mensajes de tipo $1$, se toma el primero según el orden FIFO: el (2º).
+\end{enumerate}
+Con \texttt{msgtyp = -3} el resultado sería el mismo mensaje, porque el menor tipo $\leq 3$ sigue siendo $1$. Esta variante es la que permite implementar \textbf{prioridades}: un tipo menor se atiende primero.
+
+\paragraph{Nota adicional (explicación pedagógica).} En Linux, \texttt{MSG\_EXCEPT} solo está disponible si se define la macro \texttt{\_GNU\_SOURCE} antes de incluir las cabeceras.
+
+\section{Bloqueo y Sincronización Implícita}
+Por defecto, las dos operaciones de transferencia son \textbf{bloqueantes} y es el kernel quien despierta al proceso cuando la condición se cumple.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{|p{3.1cm}|p{4.6cm}|p{4.7cm}|}
+\hline
+\textbf{Operación} & \textbf{Se bloquea cuando\ldots} & \textbf{Con \texttt{IPC\_NOWAIT}} \\ \hline
+\texttt{msgsnd()} & La cola está llena (se alcanzó \texttt{msg\_qbytes}). & Retorna $-1$ con \texttt{EAGAIN}. \\ \hline
+\texttt{msgrcv()} & La cola está vacía o no tiene mensajes del tipo pedido. & Retorna $-1$ con \texttt{ENOMSG}. \\ \hline
+\end{tabular}
+\end{table}
+
+\begin{itemize}
+    \item Si \texttt{msgsz} supera \texttt{msgmax}, el mensaje \textbf{nunca} cabe: \texttt{msgsnd()} retorna $-1$ con \texttt{EINVAL}.
+    \item Si la cola se elimina mientras un proceso espera, la llamada retorna $-1$ con \texttt{EIDRM}. Si llega una señal, retorna $-1$ con \texttt{EINTR}.
+    \item \textbf{No hay espera activa:} a diferencia de un ciclo \texttt{do\{\}while(*ptr == 0)} sobre memoria compartida, el proceso bloqueado no consume CPU hasta que el kernel lo despierta.
+\end{itemize}
+
+\paragraph{Nota adicional (explicación pedagógica).} En Linux, la capacidad \texttt{msg\_qbytes} se consume con los bytes del \textbf{cuerpo} de cada mensaje. Con la capacidad por defecto de $16384$ bytes y mensajes con cuerpo de $1024$ bytes, caben exactamente $16384 / 1024 = 16$ mensajes; el envío número 17 se bloquea (o falla con \texttt{EAGAIN} si se usa \texttt{IPC\_NOWAIT}).
+
+\newpage
+
+\section{Ejemplo 1: el Padre Envía un Entero al Hijo}
+El hijo llama a \texttt{msgrcv()} antes de que exista algún mensaje, de modo que se bloquea hasta que el padre, dos segundos después, lo envía. Se usa \texttt{IPC\_PRIVATE} porque los procesos están emparentados. Note que el tamaño pasado es \texttt{sizeof(int)}, solo el cuerpo.
+
+\begin{lstlisting}
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/wait.h>
+#include <sys/ipc.h>
+#include <sys/msg.h>
+
+struct msg {
+    long mtype;   // Message type, must be > 0
+    int  value;   // Message body
+};
+
+int main() {
+    int msqid;
+    struct msg m;
+
+    msqid = msgget(IPC_PRIVATE, IPC_CREAT | 0600);
+    if (msqid == -1) {
+        perror("msgget");
+        return EXIT_FAILURE;
+    }
+
+    if (fork() == 0) { // Child process: receiver
+        printf("[%d] Child waiting for a message...\n", getpid());
+        if (msgrcv(msqid, &m, sizeof(int), 1, 0) == -1) {
+            perror("msgrcv");
+            return EXIT_FAILURE;
+        }
+        printf("[%d] Child received: %d\n", getpid(), m.value);
+    } else {           // Parent process: sender
+        sleep(2);      // The child is blocked in msgrcv() meanwhile
+        m.mtype = 1;
+        m.value = 42;
+        if (msgsnd(msqid, &m, sizeof(int), 0) == -1) {
+            perror("msgsnd");
+        }
+        printf("[%d] Parent sent: %d\n", getpid(), m.value);
+
+        wait(NULL);
+        msgctl(msqid, IPC_RMID, NULL); // Remove the queue
+    }
+    return EXIT_SUCCESS;
+}
+\end{lstlisting}
+
+\paragraph{Resultado esperado.} Los pids varían en cada ejecución, y el orden de las dos últimas líneas puede intercambiarse porque son impresas por procesos distintos.
+\begin{lstlisting}[language={}, numbers=none]
+[1203] Child waiting for a message...
+[1203] Child received: 42
+[1202] Parent sent: 42
+\end{lstlisting}
+
+\section{Ejemplo 2: Petición y Respuesta con Dos Tipos}
+Una \textbf{sola cola} puede servir para ambos sentidos si cada proceso recibe únicamente los mensajes de su propio tipo. Aquí el padre envía dos enteros con tipo \texttt{REQ}, y el hijo responde con su suma y su producto con tipo \texttt{RES}. Como el padre recibe con \texttt{msgtyp = RES}, nunca consume su propia petición.
+
+\begin{lstlisting}
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/wait.h>
+#include <sys/ipc.h>
+#include <sys/msg.h>
+
+#define REQ 1   // Parent -> Child
+#define RES 2   // Child -> Parent
+
+struct payload {
+    int a;
+    int b;
+};
+
+struct msg {
+    long mtype;
+    struct payload p;
+};
+
+int main() {
+    int msqid = msgget(IPC_PRIVATE, IPC_CREAT | 0600);
+    struct msg m;
+
+    if (msqid == -1) {
+        perror("msgget");
+        return EXIT_FAILURE;
+    }
+
+    if (fork() == 0) { // Child: server
+        msgrcv(msqid, &m, sizeof(struct payload), REQ, 0);
+        printf("[%d] Child received request: a=%d, b=%d\n", getpid(), m.p.a, m.p.b);
+
+        int sum  = m.p.a + m.p.b;
+        int prod = m.p.a * m.p.b;
+        m.mtype = RES;
+        m.p.a = sum;
+        m.p.b = prod;
+        msgsnd(msqid, &m, sizeof(struct payload), 0);
+    } else {           // Parent: client
+        m.mtype = REQ;
+        m.p.a = 6;
+        m.p.b = 7;
+        msgsnd(msqid, &m, sizeof(struct payload), 0);
+
+        msgrcv(msqid, &m, sizeof(struct payload), RES, 0); // Only type RES
+        printf("[%d] Parent received: sum=%d, product=%d\n", getpid(), m.p.a, m.p.b);
+
+        wait(NULL);
+        msgctl(msqid, IPC_RMID, NULL);
+    }
+    return EXIT_SUCCESS;
+}
+\end{lstlisting}
+
+\paragraph{Resultado esperado.} Para $a = 6$ y $b = 7$: suma $6 + 7 = 13$ y producto $6 \cdot 7 = 42$.
+\begin{lstlisting}[language={}, numbers=none]
+[1301] Child received request: a=6, b=7
+[1300] Parent received: sum=13, product=42
+\end{lstlisting}
+
+\section{Ejemplo 3: Procesos Independientes con \texttt{ftok()}}
+Aquí los procesos no están emparentados: son dos programas distintos que se ejecutan desde terminales o desde el mismo \textit{shell}. Ambos derivan la misma clave con \texttt{ftok("/tmp", 'A')} y llaman a \texttt{msgget()} con \texttt{IPC\_CREAT}: el primero en ejecutarse crea la cola y el otro la reutiliza. El emisor recibe el tipo por línea de comandos, y el receptor recibe por línea de comandos el \texttt{msgtyp} con el que filtra. Al recibir \texttt{"quit"}, el receptor elimina la cola.
+
+\paragraph{sender.c}
+\begin{lstlisting}
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ipc.h>
+#include <sys/msg.h>
+
+#define MAX_TEXT 128
+
+struct msg {
+    long mtype;
+    char mtext[MAX_TEXT];
+};
+
+int main(int argc, char *argv[]) {
+    if (argc != 3) {
+        fprintf(stderr, "Usage: %s <type> <text>\n", argv[0]);
+        return EXIT_FAILURE;
+    }
+
+    key_t key = ftok("/tmp", 'A');
+    if (key == -1) {
+        perror("ftok");
+        return EXIT_FAILURE;
+    }
+
+    int msqid = msgget(key, IPC_CREAT | 0666);
+    if (msqid == -1) {
+        perror("msgget");
+        return EXIT_FAILURE;
+    }
+
+    struct msg m;
+    m.mtype = atol(argv[1]);
+    strncpy(m.mtext, argv[2], MAX_TEXT - 1);
+    m.mtext[MAX_TEXT - 1] = '\0';
+
+    // Send the text plus the terminating '\0'
+    if (msgsnd(msqid, &m, strlen(m.mtext) + 1, 0) == -1) {
+        perror("msgsnd");
+        return EXIT_FAILURE;
+    }
+    printf("Sent (type %ld): %s\n", m.mtype, m.mtext);
+    return EXIT_SUCCESS;
+}
+\end{lstlisting}
+
+\paragraph{receiver.c}
+\begin{lstlisting}
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ipc.h>
+#include <sys/msg.h>
+
+#define MAX_TEXT 128
+
+struct msg {
+    long mtype;
+    char mtext[MAX_TEXT];
+};
+
+int main(int argc, char *argv[]) {
+    long msgtyp = (argc > 1) ? atol(argv[1]) : 0;
+
+    key_t key = ftok("/tmp", 'A');
+    if (key == -1) {
+        perror("ftok");
+        return EXIT_FAILURE;
+    }
+
+    int msqid = msgget(key, IPC_CREAT | 0666);
+    if (msqid == -1) {
+        perror("msgget");
+        return EXIT_FAILURE;
+    }
+
+    struct msg m;
+    do {
+        ssize_t n = msgrcv(msqid, &m, MAX_TEXT, msgtyp, 0);
+        if (n == -1) {
+            perror("msgrcv");
+            return EXIT_FAILURE;
+        }
+        printf("Received (type %ld, %zd bytes): %s\n", m.mtype, n, m.mtext);
+    } while (strcmp(m.mtext, "quit") != 0);
+
+    msgctl(msqid, IPC_RMID, NULL); // Remove the queue
+    return EXIT_SUCCESS;
+}
+\end{lstlisting}
+
+\paragraph{Sesión de ejemplo.} El receptor solo acepta mensajes de tipo $2$. Los mensajes de tipo $1$ y $3$ quedan en la cola, como lo confirma \texttt{ipcs -q} (dos mensajes, $13 + 11 = 24$ bytes: cada texto cuenta su terminador). El orden de impresión entre procesos puede variar.
+
+\begin{lstlisting}[language={}, numbers=none]
+$ gcc receiver.c -o receiver
+$ gcc sender.c -o sender
+$ ./receiver 2 &
+$ ./sender 1 "low priority"
+Sent (type 1): low priority
+$ ./sender 2 "for type two"
+Sent (type 2): for type two
+Received (type 2, 13 bytes): for type two
+$ ./sender 3 "type three"
+Sent (type 3): type three
+$ ipcs -q
+------ Message Queues --------
+key        msqid      owner      perms      used-bytes   messages
+0x41000155 5          root       666        24           2
+$ ./sender 2 quit
+Sent (type 2): quit
+Received (type 2, 5 bytes): quit
+\end{lstlisting}
+
+Observe que, tras \texttt{"quit"}, el receptor ejecuta \texttt{IPC\_RMID}: los dos mensajes que seguían pendientes (tipos $1$ y $3$) se destruyen junto con la cola. Eliminar una cola con mensajes sin consumir significa perderlos.
+
+\newpage
+
+\section{Errores Comunes}
+\begin{itemize}
+    \item \textbf{Incluir \texttt{mtype} en \texttt{msgsz}} (por ejemplo, usar \texttt{sizeof(m)}). El tamaño es solo el del cuerpo. Al enviar se copian bytes de más y, al recibir, se declara una capacidad mayor que la real del buffer.
+    \item \textbf{Usar \texttt{mtype} $\leq 0$.} El tipo debe ser un entero positivo; de lo contrario \texttt{msgsnd()} falla con \texttt{EINVAL}.
+    \item \textbf{Definir estructuras distintas} en el emisor y el receptor. El cuerpo se interpreta según la \texttt{struct} de cada programa; si no coinciden, los datos se leen mal.
+    \item \textbf{Enviar un puntero en lugar de los datos} (por ejemplo, un \texttt{char *}). Solo se copiaría el valor de la dirección, que no tiene sentido en el espacio de direcciones de otro proceso. El cuerpo debe contener los datos mismos (un arreglo, una \texttt{struct}).
+    \item \textbf{Recibir con \texttt{msgtyp = 0} en una cola usada en ambos sentidos.} Un proceso puede consumir su propio mensaje. Se evita asignando un tipo distinto a cada sentido.
+    \item \textbf{Capacidad del receptor menor que el mensaje} sin \texttt{MSG\_NOERROR}. \texttt{msgrcv()} falla con \texttt{E2BIG} y el mensaje sigue en la cola, de modo que el siguiente intento vuelve a fallar.
+    \item \textbf{No eliminar la cola.} Sobrevive a los procesos y se acumula en el sistema (se detecta con \texttt{ipcs -q}); si se llena, los emisores se bloquean.
+    \item \textbf{Eliminar la cola demasiado pronto.} \texttt{IPC\_RMID} destruye los mensajes pendientes y despierta con \texttt{EIDRM} a los procesos bloqueados.
+    \item \textbf{No verificar el retorno} de las llamadas. Todas retornan $-1$ en error; \texttt{EINTR} indica que una señal interrumpió la espera.
+    \item \textbf{Tratar el cuerpo como cadena sin terminador.} Al enviar texto, incluya el \texttt{'\textbackslash 0'} con \texttt{strlen + 1}.
+\end{itemize}
+
+\section{Conceptos Avanzados: Colas POSIX}
+Además de las colas System V existen las colas de mensajes \textbf{POSIX}. Comparten la idea central (mensajes con límites que viven en el kernel), pero cambia la forma de nombrar la cola y el criterio de selección.
+
+\begin{table}[h]
+\centering
+\footnotesize
+\begin{tabular}{|l|p{5.2cm}|p{5.2cm}|}
+\hline
+\textbf{Aspecto} & \textbf{System V (este curso)} & \textbf{POSIX} \\ \hline
+Cabecera / enlace & \texttt{<sys/msg.h>} & \texttt{<mqueue.h>}, compilar con \texttt{-lrt} \\ \hline
+Identificación & Clave \texttt{key\_t} (\texttt{ftok}) e identificador \texttt{msqid} & Nombre tipo ruta (\texttt{"/micola"}) y descriptor \texttt{mqd\_t} \\ \hline
+Crear / abrir & \texttt{msgget(key, flags)} & \texttt{mq\_open(name, oflag, mode, attr)} \\ \hline
+Enviar & \texttt{msgsnd(id, msgp, msgsz, flags)} & \texttt{mq\_send(mq, ptr, len, prio)} \\ \hline
+Recibir & \texttt{msgrcv(id, msgp, msgsz, msgtyp, flags)} & \texttt{mq\_receive(mq, ptr, len, \&prio)} \\ \hline
+Selección & Por tipo (\texttt{mtype}): FIFO dentro de cada tipo & Por prioridad: primero el de mayor prioridad \\ \hline
+Eliminar & \texttt{msgctl(id, IPC\_RMID, NULL)} & \texttt{mq\_close(mq)} y \texttt{mq\_unlink(name)} \\ \hline
+Extras & \texttt{ipcs -q}, \texttt{ipcrm -q} & Notificación asíncrona (\texttt{mq\_notify}), uso con \texttt{select}/\texttt{poll}, visible en \texttt{/dev/mqueue} \\ \hline
+\end{tabular}
+\end{table}
+
+\section{Resumen de Conceptos Clave}
+\begin{itemize}
+    \item Una cola de mensajes es un recurso del kernel identificado por \texttt{msqid} y localizado por una clave (\texttt{ftok} o \texttt{IPC\_PRIVATE}).
+    \item Los mensajes son unidades discretas con tipo y cuerpo; el tipo permite multiplexar canales y recibir selectivamente.
+    \item API System V: \texttt{msgget} (crear u obtener), \texttt{msgsnd} (enviar), \texttt{msgrcv} (recibir), \texttt{msgctl} (consultar, modificar, eliminar).
+    \item \texttt{msgsnd} y \texttt{msgrcv} bloquean por defecto: la sincronización la aporta el kernel; \texttt{IPC\_NOWAIT} la desactiva.
+    \item El tamaño que se pasa es solo el del cuerpo (\texttt{msgsz}), nunca incluye \texttt{mtype}.
+    \item La cola sobrevive a los procesos: elimínela siempre con \texttt{IPC\_RMID} (o \texttt{ipcrm -q}).
+    \item Costo frente a memoria compartida: cada mensaje se copia dos veces; a cambio, no se requiere sincronización explícita.
+\end{itemize}
+
+\section{Preguntas de Comprobación}
+\begin{enumerate}
+    \item ¿Por qué se dice que una cola de mensajes no es un flujo de bytes? ¿Qué ventaja ofrece esto al receptor frente a un pipe?
+    \item Si el cuerpo es \texttt{struct data d;}, ¿qué valor se pasa como \texttt{msgsz}? ¿Por qué no es correcto usar el \texttt{sizeof} de la estructura completa del mensaje?
+    \item ¿Qué deben compartir dos procesos independientes para usar la misma cola? ¿Y dos procesos emparentados con \texttt{fork()}?
+    \item ¿Qué diferencia hay entre \texttt{IPC\_CREAT} e \texttt{IPC\_CREAT | IPC\_EXCL}? ¿En qué situación \texttt{msgget()} falla con \texttt{ENOENT}?
+    \item En una cola con tipos $[2, 5, 1, 5]$ (del frente al final), ¿qué mensaje devuelve \texttt{msgrcv()} con \texttt{msgtyp = -4}? Justifique cada paso.
+    \item ¿Por qué \texttt{msgrcv()} no produce espera activa, a diferencia de un ciclo sobre una variable en memoria compartida?
+    \item ¿Qué le ocurre a un proceso bloqueado en \texttt{msgrcv()} si otro proceso ejecuta \texttt{IPC\_RMID}? ¿Y si recibe una señal?
+    \item ¿Qué costo tiene la cola de mensajes frente a la memoria compartida, y qué se obtiene a cambio?
+\end{enumerate}
+
+\section{Ejercicios}
+\paragraph{Comprensión}
+\begin{enumerate}
+    \item Una cola contiene, del frente al final, mensajes de tipos $[4, 2, 2, 5, 1]$. Indique qué mensaje (tipo y posición) devuelve \texttt{msgrcv()} para cada uno de los siguientes valores de \texttt{msgtyp}: $0$, $2$, $-3$, $5$, $7$ y $2$ con \texttt{MSG\_EXCEPT}. Para el valor $7$, describa qué ocurre con y sin \texttt{IPC\_NOWAIT}.
+    \item Modifique el Ejemplo 1 para que el hijo llame a \texttt{msgrcv()} con \texttt{IPC\_NOWAIT} antes de que el padre envíe el mensaje. Imprima el error con \texttt{perror()} y explique el resultado.
+\end{enumerate}
+
+\paragraph{Aplicación}
+\begin{enumerate}[resume]
+    \item El padre envía $N$ números al hijo por una cola (tipo $1$) y el hijo responde con la suma en un mensaje de tipo $2$. El padre imprime el resultado y elimina la cola.
+    \item Con el Ejemplo 3, envíe mensajes de tipos $1$, $2$ y $3$ y ejecute varios receptores con distintos valores de \texttt{msgtyp} (por ejemplo $0$, $2$ y $-2$). Registre en qué orden se consume cada mensaje y verifíquelo con \texttt{ipcs -q}.
+\end{enumerate}
+
+\paragraph{Análisis}
+\begin{enumerate}[resume]
+    \item Un servidor recibe peticiones de tipo $1$ que contienen el \texttt{pid} del cliente y responde con un mensaje cuyo tipo es ese \texttt{pid}. Pruébelo con varios clientes simultáneos y explique por qué cada cliente recibe solo su respuesta.
+    \item Envíe mensajes sin que nadie los reciba hasta superar \texttt{msgmnb} y observe con \texttt{ipcs -q} qué ocurre. Calcule cuántos mensajes caben según el tamaño del cuerpo elegido y explique qué cambia con \texttt{IPC\_NOWAIT}. Al terminar, elimine la cola con \texttt{ipcrm -q}.
+\end{enumerate}
+
+\paragraph{Integrador}
+\begin{enumerate}[resume]
+    \item Chat entre dos procesos independientes (dos terminales) con una sola cola obtenida con \texttt{ftok()}: cada proceso lee los mensajes de su propio tipo y escribe con el tipo del otro. Terminar con \texttt{"quit"}.
+    \item Repita el ejemplo del arreglo de 10 enteros de memoria compartida usando una cola de mensajes. ¿Sigue haciendo falta la señal \texttt{SIGUSR1}? Justifique.
+\end{enumerate}
+
+\end{document}

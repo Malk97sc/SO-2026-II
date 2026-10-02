@@ -1,4 +1,4 @@
-SUBDIRS = señales pipes shm
+SUBDIRS = señales pipes shm cola_mensajes
 TEX_FILES = $(shell find . -name "*.tex")
 PDF_FILES = $(TEX_FILES:.tex=.pdf)
 
