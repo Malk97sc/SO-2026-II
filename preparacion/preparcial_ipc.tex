@@ -1,0 +1,200 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish,es-noquoting]{babel}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{amsmath}
+\usepackage{geometry}
+\geometry{top=2cm, bottom=2cm, left=2.5cm, right=2.5cm}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{etoolbox}
+\usepackage{needspace}
+\usepackage{graphicx}
+\usepackage{multicol}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, calc, shapes.geometric}
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+\definecolor{shmblue}{RGB}{221,235,247}
+\definecolor{pipegreen}{RGB}{226,239,218}
+\definecolor{signalred}{RGB}{252,228,214}
+
+\lstset{
+    language=C,
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{blue},
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    numbers=left,
+    tabsize=4,
+    extendedchars=true,
+    showstringspaces=false,
+    inputencoding=utf8,
+    literate={á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1 {ñ}{{\~n}}1 {¡}{{\textexclamdown}}1 {¿}{{\textquestiondown}}1
+}
+
+\graphicspath{{../assets/}}
+\BeforeBeginEnvironment{lstlisting}{\Needspace{4cm}}
+
+\setlength{\headheight}{15pt}
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{Monitorias Sistemas Operativos 2026-II}
+\rhead{Preparación de Parcial: IPC}
+\cfoot{\thepage}
+\fancypagestyle{plain}{%
+    \fancyhf{}%
+    \cfoot{\thepage}%
+    \renewcommand{\headrulewidth}{0pt}%
+}
+
+\title{
+\begin{tikzpicture}[remember picture, overlay]
+    \node[anchor=west, inner sep=0pt, xshift=2.5cm, yshift=-2.0cm] at (current page.north west) {
+        \includegraphics[height=1.6cm]{logo_unimagdalena.png}
+    };
+    \node[anchor=east, inner sep=0pt, xshift=-2.5cm, yshift=-2.0cm] at (current page.north east) {
+        \large\textbf{2026-II}
+    };
+\end{tikzpicture}%
+\textbf{Detección paralela de sobrecargas progresivas}}
+\author{Malak Sanchez \\ \small Monitorias Sistemas Operativos}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section*{Contexto}
+Una central eléctrica recibe un archivo con millones de lecturas de consumo tomadas en intervalos regulares. Una sobrecarga progresiva ocurre cuando tres lecturas consecutivas crecen con el mismo incremento y su consumo acumulado alcanza un umbral de seguridad. Se requiere localizar una de estas ventanas utilizando varios procesos, sin duplicar el arreglo en la memoria privada de cada hijo.
+
+Los procesos trabajadores consultarán una única copia de las lecturas en memoria compartida. Una señal dará la orden de inicio y una tubería transportará todos los hallazgos al coordinador.
+
+\section*{Descripción}
+Sean $x_i$, $x_{i+1}$ y $x_{i+2}$ tres lecturas consecutivas. La ventana que comienza en la posición $i$ es una \textbf{sobrecarga progresiva válida} si cumple simultáneamente:
+
+\begin{equation*}
+    x_i < x_{i+1} < x_{i+2}, \qquad
+    x_{i+1}-x_i = x_{i+2}-x_{i+1}, \qquad
+    x_i+x_{i+1}+x_{i+2} \geq U.
+\end{equation*}
+
+Puede haber cero, una o varias ventanas válidas. El programa debe conservarlas todas e indicar, para cada una, el hijo que la encontró, su posición inicial y las tres lecturas que la forman.
+
+\section*{Entrada}
+Ejecute el programa con la siguiente forma:
+
+\begin{lstlisting}[language={}, numbers=none]
+./detector_sobrecargas <archivo> <P>
+\end{lstlisting}
+
+La primera línea del archivo contiene $N$ y el umbral $U$. A continuación aparecen exactamente $N$ enteros separados por espacios o saltos de línea.
+
+\begin{lstlisting}[language={}, numbers=none]
+20 120
+5 30 50 70 10 40 45 60 75 20
+100 130 160 45 25 80 100 120 121 60
+\end{lstlisting}
+
+Se garantiza $3 \leq N \leq 100000000$, $1 \leq P \leq \min(16,N-2)$, $0 \leq x_i \leq 10^9$ y $0 \leq U \leq 3\times10^9$. El programa debe rechazar argumentos inválidos, datos faltantes, valores fuera de rango y contenido adicional.
+
+\section*{Arquitectura requerida}
+El padre es el único proceso que abre y lee el archivo. Debe reservar un segmento de memoria compartida System V y cargar allí las $N$ lecturas antes de crear exactamente $P$ hijos. La memoria permanecerá en modo de solo lectura para los trabajadores durante la búsqueda.
+
+El espacio de candidatos contiene $N-2$ índices de inicio. El hijo $i$, numerado desde cero, examina el intervalo semiabierto
+
+\begin{equation*}
+    \left[\left\lfloor\frac{i(N-2)}{P}\right\rfloor,
+    \left\lfloor\frac{(i+1)(N-2)}{P}\right\rfloor\right).
+\end{equation*}
+
+Esta partición debe cubrir todos los índices de inicio exactamente una vez. Dos hijos pueden leer una misma medición en los bordes, pero no pueden evaluar el mismo índice de inicio.
+
+\begin{center}
+\resizebox{0.96\textwidth}{!}{%
+\begin{tikzpicture}[
+    >=Stealth,
+    node distance=0.9cm and 1.1cm,
+    box/.style={draw, thick, rounded corners, minimum height=0.9cm, align=center, font=\small},
+    flow/.style={->, thick},
+    label/.style={font=\small, fill=white, inner sep=2pt, align=center}
+]
+    \node[box, fill=blue!15, minimum width=3.2cm] (parent) {Proceso padre\\coordina y acumula};
+    \node[box, fill=gray!12, minimum width=2.6cm, left=1.4cm of parent] (file) {Archivo de\\lecturas};
+    \node[box, fill=shmblue, minimum width=4.4cm, right=1.4cm of parent] (shm) {Memoria compartida System V\\$x_0, x_1, \ldots, x_{N-1}$};
+
+    \node[box, fill=pipegreen, minimum width=3.0cm, below=1.8cm of file] (pipe) {Tubería anónima\\hallazgos y fin};
+    \node[box, fill=gray!8, minimum width=8.8cm, minimum height=1.25cm,
+        right=0.7cm of pipe] (workers) {%
+        \begin{tabular}{c@{\hspace{0.75cm}}c@{\hspace{0.75cm}}c@{\hspace{0.75cm}}c}
+            \multicolumn{4}{c}{\textbf{$P$ procesos hijos: búsqueda por rangos}} \\[1pt]
+            Hijo 0 & Hijo 1 & $\boldsymbol{\cdots}$ & Hijo $P-1$
+        \end{tabular}
+    };
+
+    \draw[flow] (file) -- node[above, label] {lee} (parent);
+    \draw[flow] (parent) -- node[above, label] {carga} (shm);
+    \draw[flow, blue!70!black] (shm.south) to[out=-90,in=35]
+        node[right, label, text=blue!70!black] {solo lectura} (workers.north east);
+    \draw[flow, red!75!black, dashed] (parent.south) to[out=-90,in=105]
+        node[right, pos=0.55, label, text=red!75!black] {\texttt{SIGUSR1}: inicio} (workers.north west);
+    \draw[flow, green!50!black] (workers.west) -- (pipe.east);
+    \draw[flow, green!50!black] (pipe.north) to[out=90,in=-135]
+        node[left, label, text=green!50!black] {recibe} (parent.south west);
+\end{tikzpicture}
+}
+\end{center}
+
+\section*{Algoritmo esperado}
+{\small
+\begin{enumerate}[itemsep=0.15em, topsep=0.2em]
+    \item El padre valida la entrada, crea la tubería y la memoria compartida, y almacena allí las $N$ lecturas.
+    \item El padre crea $P$ hijos y luego envía \texttt{SIGUSR1} a cada uno para iniciar la búsqueda. Cada hijo calcula los límites de su intervalo.
+    \item Para cada índice $j$, el hijo evalúa la condición usando $x_j$, $x_{j+1}$ y $x_{j+2}$. Por cada coincidencia envía un reporte y continúa recorriendo su rango.
+    \item Al terminar, cada hijo envía un reporte de fin. El padre lee la tubería hasta recibir los $P$ reportes de fin y almacena cada hallazgo en un vector dinámico.
+    \item El padre ordena los hallazgos por posición, imprime el total y el detalle de cada uno, espera a los hijos y libera los recursos.
+\end{enumerate}
+}
+
+\section*{Requerimientos}
+{\small
+\begin{itemize}[itemsep=0.3em]
+    \item Implementar la solución en C para Linux usando \texttt{fork()}, memoria compartida System V, una tubería anónima y señales POSIX.
+    \item Solo el padre lee el archivo; cada hijo examina únicamente el intervalo que le corresponde.
+    \item Usar \texttt{SIGUSR1} como orden de inicio después de crear todos los procesos trabajadores.
+    \item Enviar un reporte por cada hallazgo y un reporte de fin por cada hijo. La estructura debe incluir tipo, trabajador, índice y lecturas.
+    \item Guardar los hallazgos en un vector dinámico y ordenarlos de menor a mayor posición antes de imprimirlos.
+    \item Cerrar los extremos de tubería, esperar a todos los hijos y eliminar la memoria compartida.
+    \item No usar hilos, otros mecanismos IPC, archivos auxiliares, espera activa ni \texttt{sleep()}.
+    \item Compilar sin advertencias con \texttt{-std=c11 -Wall -Wextra -Wpedantic}.
+\end{itemize}
+}
+
+\section*{Ejemplo de salida}
+Para $P=4$ y el archivo mostrado, la salida esperada es:
+
+\begin{lstlisting}[language={}, numbers=none]
+MONITOR DE SOBRECARGAS
+COINCIDENCIAS: 4
+HIJO: 0  POSICION: 1   LECTURAS: 30 50 70
+HIJO: 1  POSICION: 6   LECTURAS: 45 60 75
+HIJO: 2  POSICION: 10  LECTURAS: 100 130 160
+HIJO: 3  POSICION: 15  LECTURAS: 80 100 120
+\end{lstlisting}
+
+Si no existe una ventana válida, la salida debe incluir:
+
+\begin{lstlisting}[language={}, numbers=none]
+COINCIDENCIAS: 0
+\end{lstlisting}
+
+Los reportes pueden llegar en cualquier orden, pero la salida final debe estar ordenada por posición. Para el archivo de ejemplo, las posiciones pertenecen respectivamente a los rangos de los hijos 0, 1, 2 y 3.
+
+\end{document}
