@@ -1,0 +1,62 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish,es-noquoting]{babel}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{geometry}
+\geometry{top=2cm,bottom=2cm,left=2.5cm,right=2.5cm}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{graphicx}
+\graphicspath{{../../assets/}}
+\lstset{language=C,basicstyle=\ttfamily\small,breaklines=true,frame=single,showstringspaces=false}
+\pagestyle{fancy}
+\setlength{\headheight}{15pt}
+\fancyhf{}
+\lhead{Monitorías Sistemas Operativos 2026-II}
+\rhead{Capítulo 3: Hilos}
+\cfoot{\thepage}
+\title{\textbf{Taller Propuesto: Procesamiento Concurrente con Hilos}}
+\author{Monitorías Sistemas Operativos}
+\date{\today}
+\begin{document}
+\maketitle
+
+\section*{Propósito}
+Los ejercicios integran creación de hilos, paso de argumentos, memoria compartida y recolección de resultados con \texttt{pthread\_join}. Compile con \texttt{-pthread}.
+
+\section*{Ejercicio 1}
+Un archivo contiene primero $N$ y después $N$ mediciones enteras. El programa recibe $P$ por línea de comandos y divide el vector en $P$ bloques contiguos.
+\begin{enumerate}
+    \item Cree un hilo por bloque y páselo mediante una estructura que incluya inicio, fin y puntero al vector.
+    \item Cada hilo debe calcular la suma y el máximo de su bloque sin imprimir desde la función de hilo.
+    \item El \texttt{main} debe hacer \texttt{join} a todos los hilos, consolidar la suma y el máximo global e imprimir ambos resultados.
+    \item Considere el caso en que $N$ no sea divisible entre $P$.
+\end{enumerate}
+
+\section*{Ejercicio 2}
+Reciba un archivo de texto y un número $P$. El programa debe cargar cada palabra en memoria dinámica y distribuir rangos de palabras entre $P$ hilos.
+\begin{enumerate}
+    \item Cada hilo cuenta cuántas palabras de su rango comienzan con vocal y cuántas superan seis caracteres.
+    \item Devuelva ambos conteos mediante la estructura de argumentos, no mediante variables globales.
+    \item Después de todos los \texttt{join}, imprima los conteos totales y libere cada cadena y el vector de punteros.
+\end{enumerate}
+
+\section*{Ejercicio 3}
+Se dispone de una estructura compartida con dos campos: \texttt{int aprobados} y \texttt{int rechazados}. Cree cuatro hilos; cada uno procesa un arreglo propio de calificaciones y actualiza el contador correspondiente para cada valor.
+\begin{enumerate}
+    \item Implemente primero la versión sin sincronización y ejecútela repetidamente con arreglos grandes.
+    \item Explique por qué los resultados pueden variar aunque cada hilo procese datos distintos.
+    \item Corrija el programa usando un mutex y compruebe que \texttt{aprobados + rechazados} coincide siempre con el total de datos.
+\end{enumerate}
+
+\section*{Ejercicio 4}
+Lance tres hilos con una estructura que contenga un identificador, una palabra y un tiempo de espera distinto.
+\begin{enumerate}
+    \item Cada hilo debe construir dinámicamente una nueva cadena con la palabra invertida y almacenarla en su estructura.
+    \item El \texttt{main} debe hacer \texttt{join} en el orden de los identificadores, no en el orden en que los hilos terminan.
+    \item Imprima cada resultado junto con su identificador y libere las cadenas construidas.
+\end{enumerate}
+\end{document}
